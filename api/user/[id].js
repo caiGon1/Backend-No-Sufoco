@@ -15,9 +15,6 @@ export default async function handler(req, res) {
 
     return res.status(200).json(usuario);
   }
-  import { ObjectId } from "mongodb";
-  import bcrypt from "bcryptjs";
-
   if (req.method === "PATCH") {
     try {
       const { id } = req.query;
@@ -36,10 +33,7 @@ export default async function handler(req, res) {
       if (nome) dadosAtualizados.nome = nome;
       if (email) dadosAtualizados.email = email;
       if (banco) dadosAtualizados.banco = banco;
-
-      if (senha) {
-        dadosAtualizados.senha = await bcrypt.hash(senha, 10);
-      }
+        if (senha) dadosAtualizados.senha = senha;
 
       const resultado = await db
         .collection("users")
