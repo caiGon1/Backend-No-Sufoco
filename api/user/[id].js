@@ -14,19 +14,12 @@ export default async function handler(req, res) {
       .findOne({ _id: new ObjectId(id) });
 
     return res.status(200).json(usuario);
-  }
+    }
+    
   if (req.method === "PATCH") {
     try {
       const { id } = req.query;
       const { nome, email, senha, banco } = req.body;
-
-      if (!id) {
-        return res.status(400).json({ erro: "ID não informado" });
-      }
-
-      if (!ObjectId.isValid(id)) {
-        return res.status(400).json({ erro: "ID inválido" });
-      }
 
       const dadosAtualizados = {};
 
