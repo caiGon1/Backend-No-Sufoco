@@ -16,14 +16,20 @@ export default async function handler(req, res) {
     if (req.method === 'PATCH') {
         const { id } = req.query; // Obtendo o ID do usuário a partir dos parâmetros da URL
         const { nome, email, senha, banco } = req.body; // Obtendo os dados atualizados do corpo da requisição
+        const dadosAtualizados = {};
+
+        if (nome) dadosAtualizados.nome = nome;
+        if (email) dadosAtualizados.email = email;
+        if (banco) dadosAtualizados.banco = banco;
+        if (senha) dadosAtualizados.senha = senha;
         // Atualizando o usuário pelo ID
         const resultado = await db.collection("users").updateOne(
             { _id: new ObjectId(id) },
-            { $set: { nome, email, senha, banco } }
+            { $set: {dadosAtualizados} }
         );
         return res.status(200).json({ mensagem: "Usuário atualizado!", resultado });
     }
-    
+
     if (req.method === 'DELETE') {
         const { id } = req.query; // Obtendo o ID do usuário a partir dos parâmetros da URL
         // Deletando o usuário pelo ID
