@@ -1,12 +1,10 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai"; // Verifique se o import está assim
 
-export default async function iaAnalise() {
-
+export default async function gerarRespostaIA() {
   const key = process.env.ai;
 
-  const ai = new GoogleGenAI({
-    apiKey: key
-  });
+  // O nome da classe no pacote oficial é GoogleGenerativeAI
+  const genAI = new GoogleGenerativeAI(key);
 
   const textoDoExtrato = `
   02/05/2026   COMPRA CARTAO - Supermercado BH   -R$ 150,20
@@ -15,28 +13,25 @@ export default async function iaAnalise() {
   `;
 
   try {
+    // 1. Mudamos para o modelo estável: gemini-1.5-flash
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `
+    const prompt = `
       Organize o seguinte extrato bruto em uma tabela de texto limpa (.txt). 
-
-      Use o formato:
-      DATA | DESCRIÇÃO | VALOR
-
+      Use o formato: DATA | DESCRIÇÃO | VALOR
       Não adicione introduções nem explicações.
-
       Extrato:
       ${textoDoExtrato}
-      `,
-    });
+    `;
 
-    return response.text;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    
+    // 2. O texto é uma função: .text()
+    return response.text();
 
   } catch (erro) {
-
-    console.error(erro);
-
-    throw new Error("Erro ao processar IA");
+    console.error("Erro na IA:", erro);
+    throw new Error("Erro ao processar IA: " + erro.message);
   }
 }
