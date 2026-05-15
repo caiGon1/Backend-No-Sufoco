@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb'; // <-- Faltava essa importação!
 import clientPromise from '../../lib/mongodb.js';//conexão com o banco de dados
 
 export default async function handler(req, res) {
