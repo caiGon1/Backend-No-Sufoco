@@ -1,43 +1,31 @@
 import { GoogleGenAI } from "@google/genai";
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdf from "pdf-parse"; // Substituído o pdfjs-dist por pdf-parse
 
 const key = process.env.GOOGLE_API_KEY;
 const ai = new GoogleGenAI({ apiKey: key });
 
-// Função interna para extrair o texto de um PDF protegido
+// Função interna atualizada e compatível com a Vercel
 async function extrairTextoDePDF(pdfBuffer, senha) {
-  const data = new Uint8Array(pdfBuffer);
+  // Configura as opções do pdf-parse. Se houver senha, passamos no objeto.
+  const options = {
+    password: senha || undefined
+  };
+
+  // O pdf-parse processa o buffer diretamente de forma nativa no Node.js
+  const data = await pdf(pdfBuffer, options);
   
-  // Configura os parâmetros de carregamento incluindo a senha se ela existir
-  const loadingTask = pdfjsLib.getDocument({
-    data: data,
-    password: senha || undefined,
-    useWorkerFetch: false,
-    isEvalSupported: false
-  });
-
-  const pdf = await loadingTask.promise;
-  let textoCompleto = "";
-
-  // Percorre todas as páginas extraindo apenas o texto puro
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items.map(item => item.str).join(" ");
-    textoCompleto += `--- PÁGINA ${i} ---\n${pageText}\n`;
-  }
-
-  return textoCompleto;
+  return data.text; // Retorna o texto bruto extraído do PDF
 }
 
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
 
   try {
-    // 1. Descriptografa o PDF usando a senha e extrai o conteúdo textual
+    // 1. Descriptografa o PDF usando a senha e extrai o conteúdo textual usando o pdf-parse
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
   } catch (error) {
-    if (error.name === 'PasswordException') {
+    // O pdf-parse costuma jogar um erro com 'password' na mensagem quando a senha falha
+    if (error.message && error.message.toLowerCase().includes('password')) {
       throw new Error("Senha do PDF incorreta ou não fornecida.");
     }
     throw new Error(`Falha ao ler o PDF: ${error.message}`);
@@ -113,4 +101,4 @@ Analise as transações acima e forneça um resumo financeiro curto, se necessá
     ],
   });
   return response.text;
-}
+} 
