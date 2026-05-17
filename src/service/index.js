@@ -89,3 +89,28 @@ Formato:
   const texto = response.text;
   return JSON.parse(texto);
 }
+
+export async function analiseDeTransacoes(transacoes) {
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `
+Você é um sistema especialista em análise financeira.
+Abaixo estão as transações extraídas de um extrato bancário.
+CONTEÚDO DAS TRANSAÇÕES:
+\"\"\"
+${JSON.stringify(transacoes, null, 2)}
+\"\"\"
+Analise as transações acima e forneça um resumo financeiro curto, se necessário, resalte coisas que podem melhorar. Não formate o texto e que seja simples e claro para que todos possam entender.
+            `,
+          },
+        ],
+      },
+    ],
+  });
+  return response.text;
+}

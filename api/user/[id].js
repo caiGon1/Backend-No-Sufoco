@@ -6,9 +6,8 @@ export default async function handler(req, res) {
   const db = client.db("NoSufocoDB"); //inicializa o banco de dados NoSufocoDB
 
   if (req.method === "GET") {
-    const { id } = req.query; // Obtendo o ID do usuário a partir dos parâmetros da URL
-
-    // Buscando o usuário pelo ID
+    const { id } = req.query; 
+    
     const usuario = await db
       .collection("users")
       .findOne({ _id: new ObjectId(id) });
