@@ -1,10 +1,7 @@
 {
   "functions": {
     "api/**/*.js": {
-      "includeFiles": [
-        "node_modules/@google/genai/**",
-        "node_modules/pdf-parse/**"
-      ]
+      "includeFiles": "node_modules/{@google/genai,pdf-parse}/**"
     }
   }
 }
