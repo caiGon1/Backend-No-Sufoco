@@ -75,7 +75,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
   try {
     // Envia texto para o Gemini
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.1-flash-lite",
 
       config: {
         responseMimeType: "application/json",
@@ -103,10 +103,13 @@ IMPORTANTE:
 - Não escreva explicações
 - Não utilize markdown
 - Não utilize \`\`\`
+- Não escreva 'Comprado em estabelecimento X'
+- Caso não identifique o que o estabelecimento é, não invente
+- Crie somente um objeto com arrays de objetos.
 
 Formato esperado:
 
-{
+
   "transacoes": [
     {
       "data": "DD/MM/YYYY",
@@ -116,7 +119,7 @@ Formato esperado:
       "categoria": "pix, transferencia, investimento, boleto, cartao"
     }
   ]
-}
+
               `,
             },
           ],
@@ -143,7 +146,7 @@ Formato esperado:
 export async function analiseDeTransacoes(transacoes) {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.1-flash-lite",
 
       contents: [
         {

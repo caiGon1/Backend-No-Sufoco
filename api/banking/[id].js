@@ -53,7 +53,7 @@ export default async function handler(req, res) {
       const pdfBuffer = fs.readFileSync(arquivoForm.filepath);
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
-      const resultado = await db.collection("users").updateOne(
+      await db.collection("users").updateOne(
         { _id: new ObjectId(id) },
         {
           $push: {
@@ -62,7 +62,6 @@ export default async function handler(req, res) {
         },
       );
 
-      console.log(resultado);
 
       return res.status(200).json({
         status: "Sucesso",
@@ -114,7 +113,6 @@ export default async function handler(req, res) {
 
       if (transacoes.length === 0) {
         return res.status(200).json({
-          transacoes: [],
           analise:
             "Nenhuma transação encontrada para analisar. Envie um extrato primeiro.",
         });
@@ -123,7 +121,6 @@ export default async function handler(req, res) {
       const analiseTexto = await analiseDeTransacoes(transacoes);
 
       return res.status(200).json({
-        transacoes: transacoes, // Ajustado para de fato retornar a lista se o front precisar
         analise: analiseTexto,
       });
     } catch (e) {

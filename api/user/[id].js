@@ -1,9 +1,10 @@
-import { ObjectId } from "mongodb"; // <-- Faltava essa importação!
+import { ObjectId } from "mongodb";
 import clientPromise from "../../lib/mongodb.js"; //conexão com o banco de dados
 
 export default async function handler(req, res) {
   const client = await clientPromise;
-  const db = client.db("NoSufocoDB"); //inicializa o banco de dados NoSufocoDB
+  const db = client.db("NoSufocoDB"); 
+  
 
   if (req.method === "GET") {
     const { id } = req.query; 
