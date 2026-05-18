@@ -5,6 +5,7 @@ import {
   analiseDeTransacoes,
 } from "../../src/service/index.js"; // Import unificado
 import formidable from "formidable";
+import { verifyToken } from "../../middleware/authentication.js";
 import fs from "fs";
 
 export const config = {
@@ -20,6 +21,13 @@ export default async function handler(req, res) {
 
   // --- MÉTODO POST: Upload e Extração ---
   if (req.method === "POST") {
+    const decodedUser = verifyToken(req);
+    if (!decodedUser) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: Invalid or missing token" });
+    }
+
     const { id } = req.query;
 
     if (!id || !ObjectId.isValid(id)) {
@@ -62,7 +70,6 @@ export default async function handler(req, res) {
         },
       );
 
-
       return res.status(200).json({
         status: "Sucesso",
         message: "Arquivo processado e salvo no banco com sucesso!",
@@ -86,6 +93,12 @@ export default async function handler(req, res) {
 
   // --- MÉTODO GET: Busca e Análise ---
   if (req.method === "GET") {
+    const decodedUser = verifyToken(req);
+    if (!decodedUser) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: Invalid or missing token" });
+    }
     const { id } = req.query;
 
     if (!id || !ObjectId.isValid(id)) {

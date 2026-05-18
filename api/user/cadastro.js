@@ -1,13 +1,29 @@
-import clientPromise from "../../lib/mongodb.js"; // Conexão com o banco de dados
-import bcrypt from "bcrypt"; // Modificado para seguir o padrão import
+import clientPromise from "../../lib/mongodb.js";
+import bcrypt from "bcrypt";
+import * as jwt from "jsonwebtoken";
+
+function generateToken(userId, username) {
+  const JWT_SECRET = process.env.JWT_SECRET;
+
+  return jwt.sign(
+    {
+      id: userId.toString(),
+      username: username,
+    },
+    JWT_SECRET,
+    {
+      expiresIn: "1h",
+    }
+  );
+}
 
 export default async function handler(req, res) {
-  // 1. Garante que só aceita requisições do tipo POST
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
-    return res
-      .status(405)
-      .json({ mensagem: `Método ${req.method} não permitido` });
+
+    return res.status(405).json({
+      mensagem: `Método ${req.method} não permitido`,
+    });
   }
 
   try {
@@ -16,34 +32,45 @@ export default async function handler(req, res) {
 
     const { nome, email, senha, banco } = req.body;
 
-    // Validação simples (evita erros se o body vier vazio)
     if (!email || !senha) {
-      return res
-        .status(400)
-        .json({ mensagem: "E-mail e senha são obrigatórios." });
+      return res.status(400).json({
+        mensagem: "E-mail e senha são obrigatórios.",
+      });
     }
 
-    // 2. Criptografa a senha (o return anterior foi removido)
-    const saltRounds = 12;
-    const senhaHash = await bcrypt.hash(senha, saltRounds);
+    const usuarioExistente = await db
+      .collection("users")
+      .findOne({ email });
 
-    // 3. Insere o usuário no banco de dados
+    if (usuarioExistente) {
+      return res.status(409).json({
+        mensagem: "Este e-mail já está cadastrado.",
+      });
+    }
+
+    const senhaHash = await bcrypt.hash(senha, 10);
+
     const resultado = await db.collection("users").insertOne({
       nome,
       email,
       senhaHash,
       banco,
-      criadoEm: new Date(), // Boa prática: salvar a data de criação
+      criadoEm: new Date(),
     });
 
-    // 4. Retorna a resposta de sucesso
+    const token = generateToken(resultado.insertedId, nome);
+
     return res.status(201).json({
       mensagem: "Usuário criado!",
       idCriado: resultado.insertedId,
+      token,
     });
+
   } catch (error) {
-    // Tratamento de erros caso o banco ou o bcrypt falhem
     console.error(error);
-    return res.status(500).json({ mensagem: "Erro interno no servidor." });
+
+    return res.status(500).json({
+      mensagem: "Erro interno no servidor.",
+    });
   }
 }

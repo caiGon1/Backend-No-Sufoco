@@ -1,23 +1,35 @@
 import { ObjectId } from "mongodb";
 import clientPromise from "../../lib/mongodb.js"; //conexão com o banco de dados
+import { verifyToken } from "../../middleware/authentication.js";
 
 export default async function handler(req, res) {
   const client = await clientPromise;
-  const db = client.db("NoSufocoDB"); 
-  
+  const db = client.db("NoSufocoDB");
 
   if (req.method === "GET") {
-    const { id } = req.query; 
-    
+    const decodedUser = verifyToken(req);
+    if (!decodedUser) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: Invalid or missing token" });
+    }
+    const { id } = req.query;
+
     const usuario = await db
       .collection("users")
       .findOne({ _id: new ObjectId(id) });
 
     return res.status(200).json(usuario);
-    }
-    
+  }
+
   if (req.method === "PATCH") {
     try {
+      const decodedUser = verifyToken(req);
+      if (!decodedUser) {
+        return res
+          .status(401)
+          .json({ error: "Unauthorized: Invalid or missing token" });
+      }
       const { id } = req.query;
       const { nome, email, senha, banco } = req.body;
 
@@ -26,7 +38,7 @@ export default async function handler(req, res) {
       if (nome) dadosAtualizados.nome = nome;
       if (email) dadosAtualizados.email = email;
       if (banco) dadosAtualizados.banco = banco;
-        if (senha) dadosAtualizados.senha = senha;
+      if (senha) dadosAtualizados.senha = senha;
 
       const resultado = await db
         .collection("users")
@@ -46,6 +58,12 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "DELETE") {
+    const decodedUser = verifyToken(req);
+    if (!decodedUser) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: Invalid or missing token" });
+    }
     const { id } = req.query; // Obtendo o ID do usuário a partir dos parâmetros da URL
     // Deletando o usuário pelo ID
     const resultado = await db

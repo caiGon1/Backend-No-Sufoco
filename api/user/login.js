@@ -1,6 +1,16 @@
 import clientPromise from "../../lib/mongodb.js"; // Conexão com o banco de dados
 import bcrypt from "bcrypt"; // Modificado para seguir o padrão import
 
+function generateToken(user) {
+  const jwt = require("jsonwebtoken");
+
+  const JWT_SECRET = process.env.JWT_SECRET;
+
+  return jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, {
+    expiresIn: "1h",
+  });
+}
+
 export default async function handler(req, res) {
   // Garante que só aceita requisições do tipo POST
   if (req.method !== "POST") {
@@ -42,6 +52,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       mensagem: "Login realizado!",
       user: { id: user._id, nome: user.nome, email: user.email },
+      token: generateToken(user),
     });
   } catch (error) {
     console.error(error);
