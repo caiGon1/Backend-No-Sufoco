@@ -1,23 +1,27 @@
 import clientPromise from "../../lib/mongodb.js";
 import { ObjectId } from "mongodb";
-import { extrairInformacoes } from "../../src/service/index.js";
-import { analiseDeTransacoes } from "../../src/service/index.js";
+import {
+  extrairInformacoes,
+  analiseDeTransacoes,
+} from "../../src/service/index.js"; // Import unificado
 import formidable from "formidable";
 import fs from "fs";
 
 export const config = {
   api: {
-    bodyParser: false,
+    bodyParser: false, // Desabilita o parser padrão para o formidable funcionar
   },
 };
 
 export default async function handler(req, res) {
+  // Inicialização global do banco de dados para ambos os métodos (POST e GET)
   const client = await clientPromise;
-  const db = client.db("NoSufocoDB"); // Inicializa o banco de dados
-  if (req.method === "POST") {
-    const { id } = req.query; // Obtendo o ID do usuário a partir dos parâmetros da URL
+  const db = client.db("NoSufocoDB");
 
-    // Validando se o ID foi enviado e se é um formato válido de ObjectId antes de prosseguir
+  // --- MÉTODO POST: Upload e Extração ---
+  if (req.method === "POST") {
+    const { id } = req.query;
+
     if (!id || !ObjectId.isValid(id)) {
       return res.status(400).json({
         status: "Erro",
@@ -25,16 +29,12 @@ export default async function handler(req, res) {
       });
     }
 
-    let arquivoForm = null; // Declarada fora para ser acessível no finally
+    let arquivoForm = null;
 
     try {
       const form = formidable({});
-      const [fields, files] = await new Promise((resolve, reject) => {
-        form.parse(req, (err, fields, files) => {
-          if (err) reject(err);
-          resolve([fields, files]);
-        });
-      });
+
+      const [fields, files] = await form.parse(req);
 
       const senha = Array.isArray(fields.senha)
         ? fields.senha[0]
@@ -50,19 +50,19 @@ export default async function handler(req, res) {
         });
       }
 
-      // Lê os bytes do arquivo
       const pdfBuffer = fs.readFileSync(arquivoForm.filepath);
-
-      // Envia o buffer do PDF E a senha diretamente para a função da IA
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
-      // --- ATUALIZAÇÃO NO BANCO DE DADOS ---
-      // Fazemos o update AQUI, logo após obter o JSON de resposta com sucesso.
-      // Usamos o await para garantir que o banco salvou antes de responder ao cliente.
-      await db.collection("users").updateOne(
+      const resultado = await db.collection("users").updateOne(
         { _id: new ObjectId(id) },
-        { $push: { transacoes: resposta } }, // Cria/atualiza o campo 'transacoes' com o JSON
+        {
+          $push: {
+            transacoes: resposta.transacoes || [],
+          },
+        },
       );
+
+      console.log(resultado);
 
       return res.status(200).json({
         status: "Sucesso",
@@ -75,7 +75,6 @@ export default async function handler(req, res) {
         details: e.message,
       });
     } finally {
-      // O finally serve APENAS para limpar o arquivo temporário com segurança
       if (
         arquivoForm &&
         arquivoForm.filepath &&
@@ -86,10 +85,10 @@ export default async function handler(req, res) {
     }
   }
 
+  // --- MÉTODO GET: Busca e Análise ---
   if (req.method === "GET") {
     const { id } = req.query;
 
-    // 1. Validação do ID para evitar que o código quebre
     if (!id || !ObjectId.isValid(id)) {
       return res
         .status(400)
@@ -97,18 +96,14 @@ export default async function handler(req, res) {
     }
 
     try {
-      const client = await clientPromise;
-      const db = client.db("NoSufocoDB");
-
-      // 2. Busca o usuário trazendo APENAS o campo 'transacoes' e excluindo o '_id'
+      // CORREÇÃO: Removida a reinicialização duplicada de client e db
       const usuario = await db
         .collection("users")
         .findOne(
           { _id: new ObjectId(id) },
-          { projection: { transacoes: 1, _id: 0} },
+          { projection: { transacoes: 1, _id: 0 } },
         );
 
-      // 3. Se o usuário não for encontrado
       if (!usuario) {
         return res
           .status(404)
@@ -117,7 +112,6 @@ export default async function handler(req, res) {
 
       const transacoes = usuario.transacoes || [];
 
-      // 4. Se não houver transações, avisa o frontend sem chamar a IA à toa
       if (transacoes.length === 0) {
         return res.status(200).json({
           transacoes: [],
@@ -126,15 +120,20 @@ export default async function handler(req, res) {
         });
       }
 
-      // 5. CHAMA A IA: Passa as transações do banco para a função do Gemini
       const analiseTexto = await analiseDeTransacoes(transacoes);
 
-      // 6. Retorna o objeto completo com a lista de transações e o texto da análise
       return res.status(200).json({
+        transacoes: transacoes, // Ajustado para de fato retornar a lista se o front precisar
         analise: analiseTexto,
       });
     } catch (e) {
       return res.status(500).json({ status: "Erro", details: e.message });
     }
   }
+
+  // CORREÇÃO: Fallback obrigatório caso usem PUT, DELETE, etc.
+  res.setHeader("Allow", ["POST", "GET"]);
+  return res
+    .status(405)
+    .json({ status: "Erro", message: `Método ${req.method} não permitido.` });
 }

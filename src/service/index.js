@@ -1,61 +1,111 @@
 import { GoogleGenAI } from "@google/genai";
-import pdf from "pdf-parse"; // Substituído o pdfjs-dist por pdf-parse
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const key = process.env.GOOGLE_API_KEY;
-const ai = new GoogleGenAI({ apiKey: key });
 
-// Função interna atualizada e compatível com a Vercel
+const ai = new GoogleGenAI({
+  apiKey: key,
+});
+
+// ======================================================
+// EXTRAÇÃO DE TEXTO DO PDF
+// ======================================================
+
 async function extrairTextoDePDF(pdfBuffer, senha) {
-  // Configura as opções do pdf-parse. Se houver senha, passamos no objeto.
-  const options = {
-    password: senha || undefined
-  };
+  try {
+    // Carrega o PDF protegido por senha
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(pdfBuffer),
+      password: senha || "",
+    });
 
-  // O pdf-parse processa o buffer diretamente de forma nativa no Node.js
-  const data = await pdf(pdfBuffer, options);
-  
-  return data.text; // Retorna o texto bruto extraído do PDF
+    const pdf = await loadingTask.promise;
+
+    let textoCompleto = "";
+
+    // Percorre todas as páginas
+    for (let paginaAtual = 1; paginaAtual <= pdf.numPages; paginaAtual++) {
+      const page = await pdf.getPage(paginaAtual);
+
+      const textContent = await page.getTextContent();
+
+      // Extrai os textos da página
+      const textosDaPagina = textContent.items.map((item) => item.str);
+
+      textoCompleto += textosDaPagina.join(" ") + "\n";
+    }
+
+    // Remove espaços duplicados
+    textoCompleto = textoCompleto.replace(/\s+/g, " ").trim();
+
+    if (!textoCompleto || textoCompleto.length < 10) {
+      throw new Error("Não foi possível extrair conteúdo textual do PDF.");
+    }
+
+    return textoCompleto;
+  } catch (error) {
+    console.error("ERRO PDF:", error);
+
+    // Senha incorreta
+    if (
+      error?.name === "PasswordException" ||
+      error?.message?.toLowerCase().includes("password")
+    ) {
+      throw new Error("Senha do PDF incorreta ou não fornecida.");
+    }
+
+    throw new Error(`Falha ao ler o PDF: ${error.message}`);
+  }
 }
+
+// ======================================================
+// EXTRAÇÃO DE TRANSAÇÕES
+// ======================================================
 
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
 
   try {
-    // 1. Descriptografa o PDF usando a senha e extrai o conteúdo textual usando o pdf-parse
+    // Extrai texto do PDF protegido
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
   } catch (error) {
-    // O pdf-parse costuma jogar um erro com 'password' na mensagem quando a senha falha
-    if (error.message && error.message.toLowerCase().includes('password')) {
-      throw new Error("Senha do PDF incorreta ou não fornecida.");
-    }
-    throw new Error(`Falha ao ler o PDF: ${error.message}`);
+    throw new Error(error.message);
   }
 
-  // 2. Passa o texto aberto e legível diretamente para o Gemini 2.5 Flash
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    config: {
-      responseMimeType: "application/json",
-    },
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: `
+  try {
+    // Envia texto para o Gemini
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+
+      config: {
+        responseMimeType: "application/json",
+      },
+
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `
 Você é um sistema especialista em análise financeira.
-Abaixo está o texto extraído diretamente de um extrato bancário protegido.
+
+Abaixo está o texto extraído diretamente de um extrato bancário.
 
 CONTEÚDO DO EXTRATO:
-\"\"\"
+"""
 ${textoDoExtrato}
-\"\"\"
+"""
 
-Extraia todas as transações do extrato bancário fornecido acima.
+Extraia todas as transações presentes no extrato.
 
-Retorne SOMENTE JSON válido.
+IMPORTANTE:
+- Retorne SOMENTE JSON válido
+- Não escreva explicações
+- Não utilize markdown
+- Não utilize \`\`\`
 
-Formato:
+Formato esperado:
+
 {
   "transacoes": [
     {
@@ -67,38 +117,72 @@ Formato:
     }
   ]
 }
-            `,
-          },
-        ],
-      },
-    ],
-  });
+              `,
+            },
+          ],
+        },
+      ],
+    });
 
-  const texto = response.text;
-  return JSON.parse(texto);
+    const texto = response.text.trim();
+
+    return JSON.parse(texto);
+  } catch (error) {
+    console.error("ERRO GEMINI:", error);
+
+    throw new Error(
+      `Falha ao processar as informações do extrato: ${error.message}`,
+    );
+  }
 }
 
+// ======================================================
+// ANÁLISE FINANCEIRA
+// ======================================================
+
 export async function analiseDeTransacoes(transacoes) {
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: `
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `
 Você é um sistema especialista em análise financeira.
+
 Abaixo estão as transações extraídas de um extrato bancário.
-CONTEÚDO DAS TRANSAÇÕES:
-\"\"\"
+
+TRANSAÇÕES:
+"""
 ${JSON.stringify(transacoes, null, 2)}
-\"\"\"
-Analise as transações acima e forneça um resumo financeiro curto, se necessário, resalte coisas que podem melhorar. Não formate o texto e que seja simples e claro para que todos possam entender.
-            `,
-          },
-        ],
-      },
-    ],
-  });
-  return response.text;
-} 
+"""
+
+Analise as transações acima e forneça:
+
+- Um resumo financeiro curto
+- Possíveis excessos de gastos
+- Dicas simples de melhoria financeira
+
+IMPORTANTE:
+- Resposta curta
+- Linguagem simples
+- Sem markdown
+- Sem listas complexas
+- Fácil de entender
+              `,
+            },
+          ],
+        },
+      ],
+    });
+
+    return response.text.trim();
+  } catch (error) {
+    console.error("ERRO ANÁLISE:", error);
+
+    throw new Error(`Falha ao gerar análise financeira: ${error.message}`);
+  }
+}
