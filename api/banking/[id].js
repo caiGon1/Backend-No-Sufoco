@@ -10,12 +10,11 @@ import fs from "fs";
 
 export const config = {
   api: {
-    bodyParser: false, // Desabilita o parser padrão para o formidable funcionar
+    bodyParser: false, 
   },
 };
 
 export default async function handler(req, res) {
-  // Inicialização global do banco de dados para ambos os métodos (POST e GET)
   const client = await clientPromise;
   const db = client.db("NoSufocoDB");
 
