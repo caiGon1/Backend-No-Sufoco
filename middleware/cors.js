@@ -1,7 +1,7 @@
 export default function cors(req, res) {
   res.setHeader(
     "Access-Control-Allow-Origin",
-    "https://no-sufoco.vercel.app/"
+    "https://no-sufoco.vercel.app"
   );
 
   res.setHeader(
