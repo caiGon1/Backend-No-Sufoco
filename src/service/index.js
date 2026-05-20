@@ -76,11 +76,30 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     // Envia texto para o Gemini
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite",
-
       config: {
         responseMimeType: "application/json",
+        // O Schema força o modelo a cuspir o JSON exatamente nessa estrutura estruturada
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            transacoes: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  data: { type: "STRING" },
+                  descricao: { type: "STRING" },
+                  valor: { type: "NUMBER" },
+                  tipo: { type: "STRING", enum: ["credito", "debito"] },
+                  categoria: { type: "STRING", enum: ["pix", "transferencia", "investimento", "boleto", "cartao"] }
+                },
+                required: ["data", "descricao", "valor", "tipo", "categoria"]
+              }
+            }
+          },
+          required: ["transacoes"]
+        }
       },
-
       contents: [
         {
           role: "user",
@@ -99,28 +118,9 @@ ${textoDoExtrato}
 Extraia todas as transações presentes no extrato.
 
 IMPORTANTE:
-- Retorne SOMENTE JSON válido
-- Não escreva explicações
-- Não utilize markdown
-- Não utilize \`\`\`
-- Não escreva 'Comprado em estabelecimento X'
-- Caso não identifique o que o estabelecimento é, não invente
-- Crie somente um objeto com arrays de objetos.
-
-Formato esperado:
-
-
-  "transacoes": [
-    {
-      "data": "DD/MM/YYYY",
-      "descricao": "texto",
-      "valor": 0.00,
-      "tipo": "credito ou debito",
-      "categoria": "pix, transferencia, investimento, boleto, cartao"
-    }
-  ]
-
-              `,
+- Retorne um JSON válido contendo o objeto principal com o array de transações.
+- Caso não identifique o que o estabelecimento é, não invente.
+`,
             },
           ],
         },

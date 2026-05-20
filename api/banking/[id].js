@@ -10,7 +10,7 @@ import fs from "fs";
 
 export const config = {
   api: {
-    bodyParser: false, 
+    bodyParser: false,
   },
 };
 
@@ -64,11 +64,13 @@ export default async function handler(req, res) {
         { _id: new ObjectId(id) },
         {
           $push: {
-            transacoes: resposta.transacoes || [],
+            transacoes: {
+              $each: resposta.transacoes,
+            },
           },
         },
       );
-
+      // Certo: distribui os objetos dentro do array original
       return res.status(200).json({
         status: "Sucesso",
         message: "Arquivo processado e salvo no banco com sucesso!",
