@@ -1,13 +1,16 @@
 export default function cors(req, res) {
-  res.setHeader(
-    "Access-Control-Allow-Origin",
+  // Lista de origens permitidas (sem caminhos)
+  const allowedOrigins = [
     "https://no-sufoco.vercel.app",
-    "https://no-sufoco.vercel.app/cadastro",
-    "https://no-sufoco.vercel.app/dashboard",
-    "http://localhost:5173",
-    "http://localhost:5173/cadastro",
-    "http://localhost:5173/dashboard"
-  );
+    "http://localhost:5173"
+  ];
+
+  const origin = req.headers.origin;
+
+  // Se a origem da requisição estiver na lista, permite o acesso
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
 
   res.setHeader(
     "Access-Control-Allow-Methods",
@@ -19,9 +22,9 @@ export default function cors(req, res) {
     "Content-Type, Authorization"
   );
 
+  // Responde imediatamente às requisições de preflight (OPTIONS)
   if (req.method === "OPTIONS") {
     res.status(200).end();
-
     return true;
   }
 
