@@ -1,4 +1,4 @@
-// arquivo: utils/cors.js (ou similar)
+// arquivo: utils/cors.js
 
 export default function cors(req, res) {
   const allowedOrigins = [
@@ -11,18 +11,24 @@ export default function cors(req, res) {
   // Permite a origem se estiver na lista
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
+  } else if (!origin) {
+    // Opcional: Permite requisições sem origem (ex: Postman ou Server-to-Server)
+    res.setHeader("Access-Control-Allow-Origin", "*");
   }
 
   // Configura os métodos e headers permitidos
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  
+  // IMPORTANTE: Permite que cookies/sessões sejam compartilhados se necessário
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  // Se for uma requisição de teste (Preflight), encerra aqui com sucesso
+  // Se for uma requisição de teste (Preflight), encerra explicitamente com status 204 ou 200
   if (req.method === "OPTIONS") {
-    res.writeHead(200);
+    res.statusCode = 204; // No Content é o padrão ideal para OPTIONS
     res.end();
-    return true; // Indica que a requisição foi encerrada por aqui
+    return true; // Retorna true informando que a requisição FOI ENCERRADA
   }
 
-  return false; // Indica que a requisição pode continuar para a lógica principal
+  return false; // Retorna false informando que a rota principal pode continuar
 }

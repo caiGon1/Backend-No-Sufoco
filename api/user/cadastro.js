@@ -1,8 +1,10 @@
 import clientPromise from "../../lib/mongodb.js";
 import bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
+import cors from "../../middleware/cors.js";
 
 function generateToken(userId, username) {
+  
   const JWT_SECRET = process.env.JWT_SECRET;
 
   return jwt.sign(
@@ -18,6 +20,7 @@ function generateToken(userId, username) {
 }
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
 

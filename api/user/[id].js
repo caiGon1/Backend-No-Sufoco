@@ -1,8 +1,11 @@
 import { ObjectId } from "mongodb";
 import clientPromise from "../../lib/mongodb.js"; //conexão com o banco de dados
 import { verifyToken } from "../../middleware/authentication.js";
+import cors from "../../middleware/cors.js";
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return
+
   const client = await clientPromise;
   const db = client.db("NoSufocoDB");
 

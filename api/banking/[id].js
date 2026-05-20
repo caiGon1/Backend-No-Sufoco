@@ -7,6 +7,7 @@ import {
 import formidable from "formidable";
 import { verifyToken } from "../../middleware/authentication.js";
 import fs from "fs";
+import cors from "../../middleware/cors.js";
 
 export const config = {
   api: {
@@ -15,6 +16,7 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  if (cors(req, res)) return;
   const client = await clientPromise;
   const db = client.db("NoSufocoDB");
 
