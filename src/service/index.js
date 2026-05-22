@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+
 
 const key = process.env.GOOGLE_API_KEY;
 
