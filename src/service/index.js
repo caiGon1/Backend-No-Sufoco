@@ -91,7 +91,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                   descricao: { type: "STRING" },
                   valor: { type: "NUMBER" },
                   tipo: { type: "STRING", enum: ["credito", "debito"] },
-                  categoria: { type: "STRING", enum: ["pix", "transferencia", "investimento", "boleto", "cartao"] }
+                  categoria: { type: "STRING"},
                 },
                 required: ["data", "descricao", "valor", "tipo", "categoria"]
               }
@@ -119,6 +119,7 @@ Extraia todas as transações presentes no extrato.
 
 IMPORTANTE:
 - Retorne um JSON válido contendo o objeto principal com o array de transações.
+- Coloque em "categoria" o tipo de gasto que é, como alugel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, e streaming. Pesquise o que significa caso não saiba, porém não invente.
 - Caso não identifique o que o estabelecimento é, não invente.
 `,
             },
