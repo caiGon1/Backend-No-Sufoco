@@ -79,12 +79,15 @@ export default async function handler(req, res) {
           ...periodo,
           transacoes: (periodo.transacoes || []).map((t) => ({
             ...t,
-            descricao: criptografar(t.descricao), 
+            data: criptografar(t.data),
+            descricao: criptografar(t.descricao),
+            valor: criptografar(t.valor),
+            tipo: criptografar(t.tipo),
+            categoria: criptografar(t.categoria),
           })),
         }),
       );
 
-  
       await db.collection("users").updateOne(
         { _id: new ObjectId(id) },
         {
@@ -156,7 +159,11 @@ export default async function handler(req, res) {
         .flatMap((p) => p.transacoes || [])
         .map((t) => ({
           ...t,
-          descricao: descriptografar(t.descricao), // Restaura o texto original em memória
+          data: descriptografar(t.data),
+          descricao: descriptografar(t.descricao),
+          valor: descriptografar(t.valor),
+          tipo: descriptografar(t.tipo),
+          categoria: descriptografar(t.categoria),
         }));
 
       if (transacoesDescriptografadas.length === 0) {
