@@ -98,7 +98,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                     items: {
                       type: "OBJECT",
                       properties: {
-                        data: { type: "STRING" },
+                        data: { type: "DATE" },
                         descricao: { type: "STRING" },
                         valor: { type: "NUMBER" },
                         tipo: { type: "STRING", enum: ["credito", "debito"] },
@@ -142,6 +142,7 @@ IMPORTANTE:
 - Retorne um JSON válido contendo o objeto principal com o array de transações.
 - Coloque o mês e ano vigente como valores numéricos. Exemplo: "mes": 1, "ano": 2026.
 - Coloque em "categoria" o tipo de gasto que é, como aluguel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, e streaming. Pesquise o que significa caso não saiba, porém não invente.
+- Coloque em "data" como dd/mm/aaaa.
 - Caso não identifique o que o estabelecimento é, não invente.
 `,
             },
