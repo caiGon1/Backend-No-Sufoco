@@ -1,4 +1,5 @@
-import { criptografar, descriptografar } from "../../crypto.js";
+import { descriptografar } from "../../middleware/crypto.js";
+import { criptografar } from "../../middleware/crypto.js";
 import clientPromise from "../../lib/mongodb.js";
 import { ObjectId } from "mongodb";
 import {
