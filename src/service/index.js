@@ -7,7 +7,7 @@ const ai = new GoogleGenAI({
 });
 
 // ======================================================
-// GERAÇÃO DINÂMICA DO PROMPT
+// GERAÇÃO DINÂMICA DO PROMPT (OTIMIZADO SEM BUSCA WEB)
 // ======================================================
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
   return `
@@ -30,21 +30,21 @@ Compras parceladas detectadas no extrato DEVEM ser agrupadas neste período prin
 ## TAREFA PRINCIPAL
 Extraia TODAS as transações financeiras presentes no texto acima e classifique-as com precisão.
 
-## REGRAS DE CATEGORIZAÇÃO (CRÍTICO)
+## REGRAS DE CATEGORIZAÇÃO (CRÍTICO - LEIA COM ATENÇÃO)
 
-Você deve usar o seu conhecimento de mercado para inferir a categoria correta com base no nome do estabelecimento (comerciante).
-SE VOCÊ NÃO RECONHECER O NOME DO ESTABELECIMENTO, USE A FERRAMENTA DE BUSCA DO GOOGLE (GOOGLE SEARCH) QUE ESTÁ ATIVADA PARA PESQUISAR O RAMO DE ATIVIDADE DELE.
+Você deve usar o seu conhecimento nativo de mercado para inferir e deduzir a categoria correta com base no nome ou fragmentos do nome do estabelecimento. Não seja excessivamente rígido. Se o nome lembrar ou fizer parte de uma marca conhecida, classifique-a na categoria correspondente.
 
-Guia de correspondência para ajudar sua inferência de contexto:
-- "supermercado": Carrefour, Pão de Açúcar, Extra, Assaí, Atacadão, Zona Sul, Mundial, mercado de bairro, mercearia, hortifruti, sacolão, padaria.
-- "delivery": iFood, Rappi, Zé Delivery, Uber Eats.
-- "lazer": Uber, 99Pop, postos de combustível (Shell, Ipiranga, BR), cinemas, shows, eventos, bares, restaurantes, vestuário, lojas de shopping, jogos.
-- "luz": Enel, CPFL, Light, Coelba, Cemig.
-- "água": Sabesp, Sanepar, Cedae, Copasa.
-- "internet": Claro, Vivo, Tim, Net, Oi, provedores locais de banda larga.
-- "streaming" / "assinaturas": Netflix, Spotify, Amazon Prime, Disney+, Globoplay, Deezer, Apple, Google, Crunchyroll, assinaturas de jornais/softwares.
+Use esta lógica de aproximação e o guia de correspondência abaixo:
+- "supermercado": Grandes redes (Carrefour, Pão de Açúcar, Extra, Assaí, Atacadão, Zona Sul, Mundial, Mambo) ou qualquer linha contendo termos como "MERCADO", "MERCEARIA", "HORTIFRUTI", "SACOLAO", "PADARIA", "PANIFICADORA", "CONFEITARIA".
+- "delivery": iFood, Rappi, Zé Delivery, Uber Eats ou estabelecimentos com "DELIVERY" ou "LANCHES" no nome.
+- "lazer": Uber, 99Pop, postos de combustível (Shell, Ipiranga, BR, Ale, Posto), cinemas, shows, eventos, bares, restaurantes, vestuário, lojas de shopping, artigos esportivos, jogos, eletrônicos.
+- "luz": Enel, CPFL, Light, Coelba, Cemig, Equatorial.
+- "água": Sabesp, Sanepar, Cedae, Copasa, Embasa.
+- "internet": Claro, Vivo, Tim, Net, Oi, ou provedores de banda larga.
+- "streaming" / "assinaturas": Netflix, Spotify, Amazon Prime, Disney+, Globoplay, Deezer, Apple, Google, Crunchyroll, assinaturas de jornais, recargas ou softwares/SaaS.
 
-SÓ use a categoria "outros" se mesmo após a pesquisa no Google você não conseguir determinar o ramo do comércio de forma alguma.
+REDUZA O USO DE "OUTROS":
+Só use a categoria "outros" em último caso, quando o texto for apenas um código numérico aleatório ou siglas totalmente impossíveis de correlacionar com o consumo diário de uma pessoa. Se parecer uma loja comercial, prefira aproximar para "lazer" ou "supermercado" em vez de escolher "outros".
 
 ## REGRAS GERAIS
 
@@ -141,7 +141,7 @@ function detectarPeriodoPrincipal(texto) {
 }
 
 // ======================================================
-// EXTRAÇÃO DE TRANSAÇÕES (COM GOOGLE SEARCH ATIVADO)
+// EXTRAÇÃO DE TRANSAÇÕES (OTIMIZADA E CORRIGIDA)
 // ======================================================
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
@@ -168,8 +168,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite",
       config: {
-        // ATIVAÇÃO DA BUSCA WEB DO GOOGLE AQUI
-        tools: [{ googleSearch: {} }],
+        // BUSCA REMOVIDA DAQUI PARA EVITAR ERRO 429 RESOURCE_EXHAUSTED
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
@@ -294,7 +293,7 @@ Analise as transações acima e forneça:
 - Dicas simples de melhoria financeira
 
 IMPORTANTE:
-- Resposta corta
+- Resposta curta
 - Linguagem simples
 - Sem markdown
 - Sem listas complexas
