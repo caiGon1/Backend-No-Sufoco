@@ -1,3 +1,4 @@
+import { criptografar, descriptografar } from "../../utils/crypto.js";
 import clientPromise from "../../lib/mongodb.js";
 import { ObjectId } from "mongodb";
 import {
@@ -31,7 +32,6 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
-      // IMPORTANTE: Em caso de erro, reinjete o header de origem para o CORS não quebrar
       res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res
         .status(401)
@@ -54,8 +54,12 @@ export default async function handler(req, res) {
       const form = formidable({});
       const [fields, files] = await form.parse(req);
 
-      const senha = Array.isArray(fields.senha) ? fields.senha[0] : fields.senha;
-      arquivoForm = Array.isArray(files.arquivo) ? files.arquivo[0] : files.arquivo;
+      const senha = Array.isArray(fields.senha)
+        ? fields.senha[0]
+        : fields.senha;
+      arquivoForm = Array.isArray(files.arquivo)
+        ? files.arquivo[0]
+        : files.arquivo;
 
       if (!arquivoForm || !arquivoForm.filepath) {
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
@@ -68,12 +72,23 @@ export default async function handler(req, res) {
       const pdfBuffer = fs.readFileSync(arquivoForm.filepath);
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
+      // ATUALIZAÇÃO SEGURA: Criptografa dados sensíveis antes de salvar no banco
+      const periodosCriptografados = (resposta.periodos || []).map(
+        (periodo) => ({
+          ...periodo,
+          transacoes: (periodo.transacoes || []).map((t) => ({
+            ...t,
+            descricao: criptografar(t.descricao), // Protege a descrição sensível
+          })),
+        }),
+      );
+
       await db.collection("users").updateOne(
         { _id: new ObjectId(id) },
         {
           $push: {
             periodos: {
-              $each: resposta.periodos || [],
+              $each: periodosCriptografados,
             },
           },
         },
@@ -82,13 +97,11 @@ export default async function handler(req, res) {
       res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(200).json({
         status: "Sucesso",
-        message: "Arquivo processado e salvo no banco com sucesso!",
-        resposta: resposta,
+        message: "Arquivo processado e salvo no banco com segurança!",
+        resposta: resposta, // O front ainda recebe os dados limpos gerados na hora
       });
-
     } catch (e) {
       console.error("Erro interno no upload:", e);
-      // SE CAIR NO CATCH, PRECISAMOS INJETAR O CORS AQUI TAMBÉM!
       res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(500).json({
         status: "Erro",
@@ -122,11 +135,12 @@ export default async function handler(req, res) {
     }
 
     try {
+      // ATUALIZAÇÃO: Busca o campo correto 'periodos' em vez de 'transacoes'
       const usuario = await db
         .collection("users")
         .findOne(
           { _id: new ObjectId(id) },
-          { projection: { transacoes: 1, _id: 0 } },
+          { projection: { periodos: 1, _id: 0 } },
         );
 
       if (!usuario) {
@@ -135,21 +149,32 @@ export default async function handler(req, res) {
           .json({ status: "Erro", message: "Usuário não encontrado." });
       }
 
-      const transacoes = usuario.transacoes || [];
+      // ATUALIZAÇÃO SEGURA: Achata e descriptografa os dados para mandar à IA limpos
+      const transacoesDescriptografadas = (usuario.periodos || [])
+        .flatMap((p) => p.transacoes || [])
+        .map((t) => ({
+          ...t,
+          descricao: descriptografar(t.descricao), // Restaura o texto original em memória
+        }));
 
-      if (transacoes.length === 0) {
+      if (transacoesDescriptografadas.length === 0) {
         return res.status(200).json({
           analise:
             "Nenhuma transação encontrada para analisar. Envie um extrato primeiro.",
         });
       }
 
-      const analiseTexto = await analiseDeTransacoes(transacoes);
+      // Envia os dados descriptografados para a inteligência artificial analisar
+      const analiseTexto = await analiseDeTransacoes(
+        transacoesDescriptografadas,
+      );
 
       return res.status(200).json({
         analise: analiseTexto,
       });
     } catch (e) {
+      console.error("Erro interno na análise:", e);
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(500).json({ status: "Erro", details: e.message });
     }
   }
