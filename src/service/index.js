@@ -7,7 +7,7 @@ const ai = new GoogleGenAI({
 });
 
 // ======================================================
-// GERAÇÃO DINÂMICA DO PROMPT (OTIMIZADO SEM BUSCA WEB)
+// GERAÇÃO DINÂMICA DO PROMPT (LIBERDADE TOTAL DE CATEGORIAS)
 // ======================================================
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
   return `
@@ -25,44 +25,36 @@ PERÍODO PRINCIPAL DA FATURA/EXTRATO:
 
 IMPORTANTE:
 O período acima representa o mês vigente da fatura atual.
-Compras parceladas detectadas no extrato DEVEM ser agrupadas neste período principal, mesmo que a data textual da compra seja antiga.
 
 ## TAREFA PRINCIPAL
-Extraia TODAS as transações financeiras presentes no texto acima e classifique-as com precisão.
+Extraia TODAS as transações financeiras presentes no texto acima.
 
-## REGRAS DE CATEGORIZAÇÃO (CRÍTICO - LEIA COM ATENÇÃO)
+## REGRAS DE CATEGORIZAÇÃO (LIBERDADE DE INTELIGÊNCIA)
 
-Você deve usar o seu conhecimento nativo de mercado para inferir e deduzir a categoria correta com base no nome ou fragmentos do nome do estabelecimento. Não seja excessivamente rígido. Se o nome lembrar ou fizer parte de uma marca conhecida, classifique-a na categoria correspondente.
+Você tem TOTAL LIBERDADE para criar e definir a "categoria" de cada transação. Use seu conhecimento de mundo e bom senso para classificar cada estabelecimento de forma lógica e humanizada.
 
-Use esta lógica de aproximação e o guia de correspondência abaixo:
-- "supermercado": Grandes redes (Carrefour, Pão de Açúcar, Extra, Assaí, Atacadão, Zona Sul, Mundial, Mambo) ou qualquer linha contendo termos como "MERCADO", "MERCEARIA", "HORTIFRUTI", "SACOLAO", "PADARIA", "PANIFICADORA", "CONFEITARIA".
-- "delivery": iFood, Rappi, Zé Delivery, Uber Eats ou estabelecimentos com "DELIVERY" ou "LANCHES" no nome.
-- "lazer": Uber, 99Pop, postos de combustível (Shell, Ipiranga, BR, Ale, Posto), cinemas, shows, eventos, bares, restaurantes, vestuário, lojas de shopping, artigos esportivos, jogos, eletrônicos.
-- "luz": Enel, CPFL, Light, Coelba, Cemig, Equatorial.
-- "água": Sabesp, Sanepar, Cedae, Copasa, Embasa.
-- "internet": Claro, Vivo, Tim, Net, Oi, ou provedores de banda larga.
-- "streaming" / "assinaturas": Netflix, Spotify, Amazon Prime, Disney+, Globoplay, Deezer, Apple, Google, Crunchyroll, assinaturas de jornais, recargas ou softwares/SaaS.
+Exemplos de como você deve pensar:
+- "CIA MEGA FITNESS" -> categoria: "academia" ou "saúde"
+- "EBENEZER EVANGELICA" -> categoria: "doação" ou "religião"
+- "PERFUMARIA PRINCESA" ou "NATURA PAY" -> categoria: "beleza" ou "cosméticos"
+- "CAEDU ARICANDUVA" -> categoria: "vestuário" ou "roupas"
+- "MP*MELIMAIS" -> categoria: "assinaturas" ou "serviços"
+- "DF*TIKTOK SHOP" -> categoria: "compras" ou "lazer"
+- "CARREFOUR" / "PADARIA" -> categoria: "supermercado" ou "alimentação"
 
-REDUZA O USO DE "OUTROS":
-Só use a categoria "outros" em último caso, quando o texto for apenas um código numérico aleatório ou siglas totalmente impossíveis de correlacionar com o consumo diário de uma pessoa. Se parecer uma loja comercial, prefira aproximar para "lazer" ou "supermercado" em vez de escolher "outros".
+Seja específico e coerente. Use letras minúsculas e sem acentos para as categorias (ex: "saude" em vez de "Saúde", "vestuario" em vez de "Vestuário") para manter o padrão de banco de dados.
+
+SÓ use a categoria "outros" se a linha do extrato for um código incompreensível ou texto sem nexo que impossibilite qualquer dedução.
 
 ## REGRAS GERAIS
 
 REGRA 1: Cada mês diferente DEVE ser um objeto separado no array "periodos".
-REGRA 2: O campo "mesAno" deve usar EXATAMENTE "M/AAAA" (Ex: 1/2026, 11/2025).
+REGRA 2: O campo "mesAno" deve usar EXATAMENTE "M/AAAA".
 REGRA 3: Mantenha o campo "data" exatamente como aparece no extrato.
 REGRA 4: O campo "valor" deve ser número puro sem símbolo monetário.
-REGRA 5: Categorias possíveis (USE APENAS ESTAS): aluguel, luz, água, internet, supermercado, lazer, delivery, streaming, assinaturas, salário, transferência, outros.
-REGRA 6: O campo "tags" deve conter apenas uma palavra que resuma o tipo de despesa (ex: "transporte", "comida", "moradia", "combustivel", "vestuario").
-REGRA 7: Use "credito" ou "debito".
-
-REGRA 8: COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
-Extratos frequentemente mostram a data original da compra e a parcela atual (Ex: 15/01/2026 MAGAZINE LUIZA 03/10). Quando identificar padrões como 1/10, PARC 4/6 ou PX 2/5:
-1. Use o PERÍODO PRINCIPAL DA FATURA para definir o "mesAno".
-2. NÃO use a data original da compra para agrupar parcelas em blocos de meses antigos.
-3. Mantenha a data original da linha exatamente como aparece.
-
-REGRA 9: Nunca invente valores, datas, parcelas, comerciantes ou categorias fora do padrão.
+REGRA 5: O campo "tags" deve conter apenas uma palavra complementar (ex: "comida", "transporte", "mensalidade").
+REGRA 6: Use "credito" ou "debito".
+REGRA 7: COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
 
 Retorne SOMENTE JSON válido.
 `;
@@ -101,14 +93,6 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
     return textoCompleto;
   } catch (error) {
     console.error("ERRO PDF:", error);
-
-    if (
-      error?.name === "PasswordException" ||
-      error?.message?.toLowerCase().includes("password")
-    ) {
-      throw new Error("Senha do PDF incorreta ou não fornecida.");
-    }
-
     throw new Error(`Falha ao ler o PDF: ${error.message}`);
   }
 }
@@ -118,7 +102,6 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
 // ======================================================
 function detectarPeriodoPrincipal(texto) {
   const matches = texto.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
-
   const contador = {};
 
   for (const item of matches) {
@@ -141,7 +124,7 @@ function detectarPeriodoPrincipal(texto) {
 }
 
 // ======================================================
-// EXTRAÇÃO DE TRANSAÇÕES (OTIMIZADA E CORRIGIDA)
+// EXTRAÇÃO DE TRANSAÇÕES
 // ======================================================
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
@@ -153,22 +136,12 @@ export async function extrairInformacoes(pdfBuffer, senha) {
   }
 
   const periodoPrincipal = detectarPeriodoPrincipal(textoDoExtrato);
-
-  console.log("===== [DEBUG] PERÍODO PRINCIPAL DETECTADO =====");
-  console.log(periodoPrincipal);
-  console.log("===============================================");
-
-  console.log("===== [DEBUG] TEXTO EXTRAÍDO DO PDF (primeiros 500 chars) =====");
-  console.log(textoDoExtrato.substring(0, 500));
-  console.log("================================================================");
-
   const promptDinamico = gerarPrompt(textoDoExtrato, periodoPrincipal);
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite",
       config: {
-        // BUSCA REMOVIDA DAQUI PARA EVITAR ERRO 429 RESOURCE_EXHAUSTED
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
@@ -201,6 +174,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                         },
                         categoria: {
                           type: "STRING",
+                          description: "Categoria livre gerada dinamicamente com base no estabelecimento (ex: vestuario, academia, beleza, supermercado, religiao).",
                         },
                         tags: {
                           type: "STRING",
@@ -239,21 +213,8 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     const texto = response.text.trim();
 
     try {
-      const parsed = JSON.parse(texto);
-
-      console.log("===== [DEBUG] RESPOSTA DA IA — PERÍODOS ENCONTRADOS =====");
-      parsed.periodos?.forEach((p, i) => {
-        console.log(
-          `Período ${i + 1}: mesAno="${p.mesAno}" | ${
-            p.transacoes?.length ?? 0
-          } transações`
-        );
-      });
-      console.log("==========================================================");
-
-      return parsed;
+      return JSON.parse(texto);
     } catch (parseError) {
-      console.error("===== [DEBUG] FALHA AO PARSEAR JSON DA IA =====");
       console.error("Texto bruto recebido:", texto.substring(0, 300));
       throw parseError;
     }
@@ -279,7 +240,6 @@ export async function analiseDeTransacoes(transacoes) {
             {
               text: `
 Você é um sistema especialista em análise financeira.
-
 Abaixo estão as transações extraídas de um extrato bancário.
 
 TRANSAÇÕES:
