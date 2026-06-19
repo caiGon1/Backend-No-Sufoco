@@ -18,8 +18,10 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  // 1. Executa o middleware de CORS atualizado
   if (cors(req, res)) return;
 
+  // 2. Trava de segurança para requisições Preflight
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
@@ -68,26 +70,31 @@ export default async function handler(req, res) {
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
       // =========================================================================
-      // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE (EVITA DUPLICADOS NO MESMO OBJETO)
+      // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE ATUALIZADA (BLINDADA CONTRA UNDEFINED)
       // =========================================================================
       
-      // 1. Busca o usuário atualizado com todos os períodos que ele já tem salvos
+      // 1. Busca o usuário com os períodos atuais salvos
       const usuarioAtual = await db.collection("users").findOne(
         { _id: new ObjectId(id) },
         { projection: { periodos: 1 } }
       );
 
-      // Inicializa o array de períodos caso o usuário não tenha nenhum ainda
       let periodosDoBanco = usuarioAtual?.periodos || [];
 
-      // Criamos um Set com hashes de todas as transações que JÁ EXISTEM no banco (para busca rápida)
+      // Criamos um Set com assinaturas de texto limpo para evitar conflitos na criptografia
       const chavesExistentes = new Set();
+      
       periodosDoBanco.forEach((p) => {
+        // Compatibilidade: se o banco tem período antigo com mes/ano separados, normaliza para o front
+        if (!p.mesAno && p.mes && p.ano) {
+          p.mesAno = `${p.mes}/${p.ano}`;
+        }
+
         (p.transacoes || []).forEach((t) => {
-          const dataDesc = descriptografar(t.data);
-          const descDesc = descriptografar(t.descricao);
-          const valorDesc = descriptografar(t.valor);
-          // Geramos uma assinatura única baseada em texto limpo para cada transação existente
+          const dataDesc = descriptografar(t.data) || "";
+          const descDesc = descriptografar(t.descricao) || "";
+          const valorDesc = descriptografar(t.valor) !== undefined ? String(descriptografar(t.valor)) : "";
+          
           chavesExistentes.add(`${dataDesc}-${descDesc}-${valorDesc}`);
         });
       });
@@ -96,12 +103,16 @@ export default async function handler(req, res) {
 
       // 2. Itera sobre os períodos retornados pelo Gemini
       (resposta.periodos || []).forEach((periodoNovo) => {
-        // Encontra se já existe um objeto para esse mesmo mês/ano no banco
+        // Fallback: se por acaso a IA mandar separado, monta a string esperado pelo front
+        const stringMesAno = periodoNovo.mesAno || `${periodoNovo.mes}/${periodoNovo.ano}`;
+        periodoNovo.mesAno = stringMesAno;
+
+        // Procura o mês correspondente no histórico (aceita checagem por string ou legado)
         let periodoExistenteNoBanco = periodosDoBanco.find(
-          (p) => p.mesAno === periodoNovo.mesAno
+          (p) => p.mesAno === stringMesAno || (p.mes === periodoNovo.mes && p.ano === periodoNovo.ano)
         );
 
-        // Filtra apenas as transações enviadas agora que NÃO existem no banco
+        // Filtra apenas as transações do PDF que não existem no banco
         const transacoesIneditas = (periodoNovo.transacoes || []).filter((t) => {
           const chaveNova = `${t.data}-${t.descricao}-${t.valor}`;
           return !chavesExistentes.has(chaveNova);
@@ -110,44 +121,44 @@ export default async function handler(req, res) {
         if (transacoesIneditas.length > 0) {
           houveNovasTransacoes = true;
 
-          // Criptografa individualmente apenas as transações inéditas
+          // Criptografa blindando contra propriedades vazias ou nulas
           const transacoesCriptografadas = transacoesIneditas.map((t) => ({
-            ...t,
-            data: criptografar(t.data),
-            descricao: criptografar(t.descricao),
-            valor: criptografar(t.valor),
-            tipo: criptografar(t.tipo),
-            categoria: criptografar(t.categoria),
+            data: criptografar(t.data || ""),
+            descricao: criptografar(t.descricao || ""),
+            valor: criptografar(t.valor !== undefined ? t.valor : 0),
+            tipo: criptografar(t.tipo || "debito"),
+            categoria: criptografar(t.categoria || "outros"),
+            tags: criptografar(t.tags || "outros"), // 🔒 Agora suporta o campo tags do seu layout
           }));
 
           if (periodoExistenteNoBanco) {
-            // 🎯 SE O OBJETO DO MÊS JÁ EXISTE: Injeta as transações inéditas dentro dele!
+            // Se o bloco do mês já existe, injeta apenas o que sobrou de inédito dentro dele
             if (!periodoExistenteNoBanco.transacoes) {
               periodoExistenteNoBanco.transacoes = [];
             }
+            periodoExistenteNoBanco.mesAno = stringMesAno; // Garante a consistência do campo
             periodoExistenteNoBanco.transacoes.push(...transacoesCriptografadas);
           } else {
-            // 🌟 SE O MÊS É TOTALMENTE NOVO: Cria um novo objeto de período no array
+            // Se o mês é inédito, adiciona a nova estrutura organizada por mês/ano
             periodosDoBanco.push({
-              ...periodoNovo,
+              mesAno: stringMesAno,
               transacoes: transacoesCriptografadas,
             });
           }
         }
       });
 
-      // 3. Atualiza o banco de dados se houver pelo menos uma linha nova encontrada
+      // 3. Salva no banco apenas se houver novas atualizações de transações
       if (houveNovasTransacoes) {
         await db.collection("users").updateOne(
           { _id: new ObjectId(id) },
           {
             $set: {
-              periodos: periodosDoBanco, // Subescreve o array com a versão unificada e limpa
+              periodos: periodosDoBanco, 
             },
           }
         );
       } else {
-        // Se todas as transações do PDF já constavam no banco
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
         return res.status(400).json({
           status: "Erro",
@@ -181,7 +192,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- MÉTODO GET: Busca e Análise (Inalterado) ---
+  // --- MÉTODO GET: Busca e Análise ---
   if (req.method === "GET") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
@@ -220,6 +231,7 @@ export default async function handler(req, res) {
           valor: descriptografar(t.valor),
           tipo: descriptografar(t.tipo),
           categoria: descriptografar(t.categoria),
+          tags: t.tags ? descriptografar(t.tags) : "outros", // Tratamento dinâmico para registros legados que não tinham tags
         }));
 
       if (transacoesDescriptografadas.length === 0) {
