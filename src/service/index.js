@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+
+// CORREÇÃO: O import estático do pdfjsLib foi removido daqui para evitar o erro ERR_REQUIRE_ESM
 
 const key = process.env.GOOGLE_API_KEY;
 
@@ -13,6 +14,9 @@ const ai = new GoogleGenAI({
 
 async function extrairTextoDePDF(pdfBuffer, senha) {
   try {
+    // CORREÇÃO: Importação dinâmica do pacote ESM para rodar perfeitamente na Vercel
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
     // Carrega o PDF protegido por senha
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(pdfBuffer),
@@ -136,8 +140,8 @@ Extraia todas as transações presentes no extrato.
 
 IMPORTANTE:
 - Retorne um JSON válido contendo o objeto principal com o array de transações.
-- Coloque o mês e ano vigente. Exemplo: ""mes": "01", "ano": 2026,".
-- Coloque em "categoria" o tipo de gasto que é, como alugel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, e streaming. Pesquise o que significa caso não saiba, porém não invente.
+- Coloque o mês e ano vigente como valores numéricos. Exemplo: "mes": 1, "ano": 2026.
+- Coloque em "categoria" o tipo de gasto que é, como aluguel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, e streaming. Pesquise o que significa caso não saiba, porém não invente.
 - Caso não identifique o que o estabelecimento é, não invente.
 `,
             },
