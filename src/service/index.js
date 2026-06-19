@@ -176,10 +176,10 @@ Mantenha o formato original da data como aparece no extrato (ex: "15/01/2026" ou
 Sempre um número puro sem símbolos. Ex: 150.00, não "R$ 150,00".
 
 **REGRA 5 — CAMPO "categoria":**
-Tipo de gasto: aluguel, luz, água, internet, supermercado, lazer, delivery, streaming, assinaturas, salário, transferência. Se não souber, use "outros".
+Tipo de gasto: aluguel, luz, água, internet, supermercado, lazer, delivery, streaming, assinaturas, salário, transferência. Se não souber, deduza e/ou pesquise o nome. Caso o contrário classifique como "outros".
 
 **REGRA 6 — CAMPO "tags":**
-Uma única palavra que resume a transação. Ex: "salário", "aluguel", "mercado", "netflix", "uber". Se não souber, use "outros".
+Uma única palavra que resume a transação. Ex: "salário", "aluguel", "mercado", "netflix", "uber". Se não souber, deduza e/ou pesquise o nome. Caso o contrário classifique como "outros".
 
 **REGRA 7 — CAMPO "tipo":**
 "credito" para entradas (recebimentos, depósitos, salário).
