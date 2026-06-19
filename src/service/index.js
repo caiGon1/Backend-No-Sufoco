@@ -1,7 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 
-// CORREÇÃO: O import estático do pdfjsLib foi removido daqui para evitar o erro ERR_REQUIRE_ESM
-
 const key = process.env.GOOGLE_API_KEY;
 
 const ai = new GoogleGenAI({
@@ -11,35 +9,25 @@ const ai = new GoogleGenAI({
 // ======================================================
 // EXTRAÇÃO DE TEXTO DO PDF
 // ======================================================
-
 async function extrairTextoDePDF(pdfBuffer, senha) {
   try {
-    // CORREÇÃO: Importação dinâmica do pacote ESM para rodar perfeitamente na Vercel
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-    // Carrega o PDF protegido por senha
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(pdfBuffer),
       password: senha || "",
     });
 
     const pdf = await loadingTask.promise;
-
     let textoCompleto = "";
 
-    // Percorre todas as páginas
     for (let paginaAtual = 1; paginaAtual <= pdf.numPages; paginaAtual++) {
       const page = await pdf.getPage(paginaAtual);
-
       const textContent = await page.getTextContent();
-
-      // Extrai os textos da página
       const textosDaPagina = textContent.items.map((item) => item.str);
-
       textoCompleto += textosDaPagina.join(" ") + "\n";
     }
 
-    // Remove espaços duplicados
     textoCompleto = textoCompleto.replace(/\s+/g, " ").trim();
 
     if (!textoCompleto || textoCompleto.length < 10) {
@@ -49,15 +37,12 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
     return textoCompleto;
   } catch (error) {
     console.error("ERRO PDF:", error);
-
-    // Senha incorreta
     if (
       error?.name === "PasswordException" ||
       error?.message?.toLowerCase().includes("password")
     ) {
       throw new Error("Senha do PDF incorreta ou não fornecida.");
     }
-
     throw new Error(`Falha ao ler o PDF: ${error.message}`);
   }
 }
@@ -65,19 +50,16 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
 // ======================================================
 // EXTRAÇÃO DE TRANSAÇÕES
 // ======================================================
-
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
 
   try {
-    // Extrai texto do PDF protegido
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
   } catch (error) {
     throw new Error(error.message);
   }
 
   try {
-    // Envia texto para o Gemini
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite",
       config: {
@@ -90,9 +72,8 @@ export async function extrairInformacoes(pdfBuffer, senha) {
               items: {
                 type: "OBJECT",
                 properties: {
-                  mes: { type: "NUMBER" },
-                  ano: { type: "NUMBER" },
-
+                  // 🎯 CORREÇÃO: Força o Gemini a gerar a propriedade 'mesAno' unificada como string que seu backend e front esperam
+                  mesAno: { type: "STRING" }, 
                   transacoes: {
                     type: "ARRAY",
                     items: {
@@ -109,12 +90,13 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                         "descricao",
                         "valor",
                         "tipo",
+                        "tags", // Se o seu front mapeia como 'tags' a badge visual, mantenha a tipagem interna do seu objeto
                         "categoria",
                       ],
                     },
                   },
                 },
-                required: ["mes", "ano", "transacoes"],
+                required: ["mesAno", "transacoes"], // 🔑 Garante o vínculo do período com suas respectivas transações
               },
             },
           },
@@ -127,7 +109,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
           parts: [
             {
               text: `
-Você é um sistema especialista em análise financeira.
+Você é um sistema especialista em análise financeira e conciliação bancária.
 
 Abaixo está o texto extraído diretamente de um extrato bancário.
 
@@ -136,13 +118,13 @@ CONTEÚDO DO EXTRATO:
 ${textoDoExtrato}
 """
 
-Extraia todas as transações presentes no extrato.
+Extraia todas as transações presentes no extrato agrupando-as por seu respectivo período (mês e ano).
 
-IMPORTANTE:
-- Retorne um JSON válido contendo o objeto principal com o array de transações.
-- Coloque o mês e ano vigente como valores numéricos. Exemplo: "mes": 1, "ano": 2026.
-- Coloque em "categoria" o tipo de gasto que é, como aluguel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, e streaming. Pesquise o que significa caso não saiba, porém não invente.
-- Caso não identifique o que o estabelecimento é, não invente.
+REGRAS CRÍTICAS DE NEGÓCIO:
+- Se o extrato contiver registros de meses diferentes (ex: transações em Janeiro e transações em Fevereiro), você DEVE criar objetos separados dentro do array "periodos", um para cada mês correspondente.
+- O campo "mesAno" deve seguir estritamente o formato padrão "M/AAAA" ou "MM/AAAA" baseado nas datas das transações daquele bloco (Exemplo: "1/2026" para Janeiro de 2026, "2/2026" para Fevereiro).
+- Coloque em "categoria" o tipo de gasto correspondente (ex: aluguel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, streaming). Se não conseguir identificar, use "outros". Não invente estabelecimentos.
+- Mantenha o valor como um número puro.
 `,
             },
           ],
@@ -151,11 +133,9 @@ IMPORTANTE:
     });
 
     const texto = response.text.trim();
-
     return JSON.parse(texto);
   } catch (error) {
     console.error("ERRO GEMINI:", error);
-
     throw new Error(
       `Falha ao processar as informações do extrato: ${error.message}`,
     );
@@ -165,12 +145,10 @@ IMPORTANTE:
 // ======================================================
 // ANÁLISE FINANCEIRA
 // ======================================================
-
 export async function analiseDeTransacoes(transacoes) {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite",
-
       contents: [
         {
           role: "user",
@@ -187,7 +165,6 @@ ${JSON.stringify(transacoes, null, 2)}
 """
 
 Analise as transações acima e forneça:
-
 - Um resumo financeiro curto
 - Possíveis excessos de gastos
 - Dicas simples de melhoria financeira
@@ -208,7 +185,6 @@ IMPORTANTE:
     return response.text.trim();
   } catch (error) {
     console.error("ERRO ANÁLISE:", error);
-
     throw new Error(`Falha ao gerar análise financeira: ${error.message}`);
   }
 }
