@@ -7,6 +7,119 @@ const ai = new GoogleGenAI({
   apiKey: key,
 });
 
+```js id="7xtm7u"
+const prompt = `
+Você é um sistema especialista em análise financeira e conciliação bancária.
+
+Abaixo está o texto extraído diretamente de um extrato bancário.
+
+CONTEÚDO DO EXTRATO:
+"""
+${textoDoExtrato}
+"""
+
+PERÍODO PRINCIPAL DA FATURA/EXTRATO:
+"${periodoPrincipal}"
+
+IMPORTANTE:
+O período acima representa o mês vigente da fatura atual.
+
+Compras parceladas detectadas no extrato DEVEM ser agrupadas neste período principal, mesmo que a data textual da compra seja antiga.
+
+## TAREFA PRINCIPAL
+
+Extraia TODAS as transações financeiras presentes no texto acima.
+
+## REGRAS
+
+REGRA 1:
+Cada mês diferente DEVE ser um objeto separado no array "periodos".
+
+REGRA 2:
+O campo "mesAno" deve usar EXATAMENTE:
+"M/AAAA"
+
+Exemplos válidos:
+- 1/2026
+- 2/2026
+- 10/2025
+
+REGRA 3:
+Mantenha o campo "data" exatamente como aparece no extrato.
+
+REGRA 4:
+O campo "valor" deve ser número puro sem símbolo monetário.
+
+REGRA 5:
+Categorias possíveis:
+- aluguel
+- luz
+- água
+- internet
+- supermercado
+- lazer
+- delivery
+- streaming
+- assinaturas
+- salário
+- transferência
+
+Caso não saiba:
+"outros"
+
+REGRA 6:
+O campo "tags" deve conter apenas uma palavra.
+
+REGRA 7:
+Use:
+- "credito"
+- "debito"
+
+REGRA 8:
+COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
+
+Extratos frequentemente mostram:
+- data original da compra
+- parcela atual
+
+Exemplo:
+15/01/2026 MAGAZINE LUIZA 03/10
+
+Mesmo que a data da linha seja janeiro/2026, a parcela pode pertencer à fatura atual.
+
+Quando identificar:
+- 1/10
+- 2/12
+- 03/08
+- PARC 4/6
+- PARCELA 5/10
+- PX 2/5
+
+faça o seguinte:
+
+1. Use o PERÍODO PRINCIPAL DA FATURA para definir o "mesAno".
+
+2. NÃO use a data original da compra para agrupar parcelas.
+
+3. Todas as parcelas devem ficar dentro do período vigente da fatura.
+
+4. Mantenha a data original da linha exatamente como aparece.
+
+5. Nunca distribua parcelas em meses antigos.
+
+REGRA 9:
+Nunca invente:
+- valores
+- datas
+- parcelas
+- comerciantes
+- categorias
+
+Retorne SOMENTE JSON válido.
+`;
+```
+
+
 // ======================================================
 // EXTRAÇÃO DE TEXTO DO PDF
 // ======================================================
@@ -232,160 +345,7 @@ export async function extrairInformacoes(
 
             parts: [
               {
-                text: `
-Você é um sistema especialista em análise financeira e conciliação bancária.
-
-Abaixo está o texto extraído diretamente de um extrato bancário.
-
-CONTEÚDO DO EXTRATO:
-"""
-${textoDoExtrato}
-"""
-
-PERÍODO PRINCIPAL DA FATURA/EXTRATO:
-"${periodoPrincipal}"
-
-IMPORTANTE:
-O período acima representa o mês vigente da fatura atual.
-
-Compras parceladas detectadas no extrato DEVEM ser agrupadas neste período principal, mesmo que a data textual da compra seja antiga.
-
-## TAREFA PRINCIPAL
-
-Extraia TODAS as transações financeiras presentes no texto acima.
-
-## REGRAS OBRIGATÓRIAS DE AGRUPAMENTO POR PERÍODO
-
-REGRA 1 — SEPARAÇÃO OBRIGATÓRIA POR MÊS/ANO:
-
-Cada mês diferente DEVE ser um objeto separado no array "periodos".
-
-NÃO agrupe transações de meses diferentes no mesmo objeto.
-
-Exemplo CORRETO:
-
-{
-  "periodos": [
-    {
-      "mesAno": "1/2026",
-      "transacoes": []
-    },
-    {
-      "mesAno": "2/2026",
-      "transacoes": []
-    }
-  ]
-}
-
-REGRA 2 — FORMATO DO CAMPO "mesAno":
-
-Use EXATAMENTE o formato:
-
-"M/AAAA"
-
-Exemplos:
-- 1/2026
-- 2/2026
-- 10/2025
-
-NÃO use:
-- 01/2026
-- 01-2026
-
-REGRA 3 — CAMPO "data":
-
-Mantenha o formato original da data como aparece no extrato.
-
-REGRA 4 — CAMPO "valor":
-
-Sempre número puro sem símbolo.
-
-Correto:
-150.90
-
-Errado:
-"R$ 150,90"
-
-REGRA 5 — CAMPO "categoria":
-
-Categorias possíveis:
-- aluguel
-- luz
-- água
-- internet
-- supermercado
-- lazer
-- delivery
-- streaming
-- assinaturas
-- salário
-- transferência
-
-Se não souber:
-"outros"
-
-REGRA 6 — CAMPO "tags":
-
-Uma única palavra.
-
-Exemplos:
-- uber
-- ifood
-- netflix
-- salário
-- mercado
-
-Se não souber:
-"outros"
-
-REGRA 7 — CAMPO "tipo":
-
-Use:
-- "credito"
-- "debito"
-
-REGRA 8 — COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA
-
-Extratos de cartão frequentemente mostram:
-- a data original da compra
-- e também a parcela atual
-
-Exemplo:
-"15/01/2026 MAGAZINE LUIZA 03/10"
-
-Mesmo que a data da linha seja janeiro/2026, essa parcela pode pertencer à fatura atual.
-
-Quando identificar sinais de parcelamento como:
-- 1/10
-- 2/12
-- 03/08
-- PARC 4/6
-- PARCELA 5/10
-- PX 2/5
-
-faça o seguinte:
-
-1. Considere que a compra pertence ao PERÍODO PRINCIPAL DA FATURA informado acima.
-
-2. NÃO use a data original da compra para definir o campo "mesAno".
-
-3. Todas as parcelas detectadas devem ser agrupadas no período vigente da fatura.
-
-4. Mantenha a data original exatamente como aparece no extrato.
-
-5. Nunca distribua parcelas em meses antigos por causa da data original da compra.
-
-REGRA 9 — NÃO INVENTAR INFORMAÇÕES
-
-Nunca invente:
-- valores
-- datas
-- parcelas
-- categorias
-- comerciantes
-
-Extraia apenas o que estiver claramente presente no extrato.
-                `,
+                text: prompt,
               },
             ],
           },
