@@ -59,9 +59,18 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     throw new Error(error.message);
   }
 
+  // -------------------------------------------------------
+  // DEBUG: Mostra os primeiros 500 chars do texto extraído
+  // Verifique no terminal se as datas de meses diferentes aparecem aqui.
+  // Remova este bloco após o diagnóstico.
+  // -------------------------------------------------------
+  console.log("===== [DEBUG] TEXTO EXTRAÍDO DO PDF (primeiros 500 chars) =====");
+  console.log(textoDoExtrato.substring(0, 500));
+  console.log("================================================================");
+
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-2.0-flash-lite",
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -80,8 +89,6 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                       properties: {
                         data: { type: "STRING" },
                         descricao: { type: "STRING" },
-                        // CORREÇÃO 2: Valor explicitamente NUMBER para não
-                        // haver ambiguidade de tipo na comparação de duplicatas
                         valor: { type: "NUMBER" },
                         tipo: { type: "STRING", enum: ["credito", "debito"] },
                         categoria: { type: "STRING" },
@@ -110,8 +117,6 @@ export async function extrairInformacoes(pdfBuffer, senha) {
           role: "user",
           parts: [
             {
-              // CORREÇÃO 3: Prompt muito mais explícito sobre separação de períodos.
-              // Exemplos concretos e regras reforçadas para o modelo não misturar meses.
               text: `
 Você é um sistema especialista em análise financeira e conciliação bancária.
 
@@ -187,7 +192,26 @@ Uma única palavra que resume a transação. Ex: "salário", "aluguel", "mercado
     });
 
     const texto = response.text.trim();
-    return JSON.parse(texto);
+
+    // -------------------------------------------------------
+    // DEBUG: Mostra o JSON bruto retornado pela IA
+    // Verifique quantos períodos a IA está retornando.
+    // Remova este bloco após o diagnóstico.
+    // -------------------------------------------------------
+    try {
+      const parsed = JSON.parse(texto);
+      console.log("===== [DEBUG] RESPOSTA DA IA — PERÍODOS ENCONTRADOS =====");
+      parsed.periodos?.forEach((p, i) => {
+        console.log(`  Período ${i + 1}: mesAno="${p.mesAno}" | ${p.transacoes?.length ?? 0} transações`);
+      });
+      console.log("==========================================================");
+      return parsed;
+    } catch (parseError) {
+      console.error("===== [DEBUG] FALHA AO PARSEAR JSON DA IA =====");
+      console.error("Texto bruto recebido:", texto.substring(0, 300));
+      throw parseError;
+    }
+
   } catch (error) {
     console.error("ERRO GEMINI:", error);
     throw new Error(
@@ -202,7 +226,7 @@ Uma única palavra que resume a transação. Ex: "salário", "aluguel", "mercado
 export async function analiseDeTransacoes(transacoes) {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-2.0-flash-lite",
       contents: [
         {
           role: "user",
