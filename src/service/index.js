@@ -70,7 +70,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-lite",
+      model: "gemini-3.1-flash-lite",
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -226,7 +226,7 @@ Uma única palavra que resume a transação. Ex: "salário", "aluguel", "mercado
 export async function analiseDeTransacoes(transacoes) {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-lite",
+      model: "gemini-3.1-flash-lite",
       contents: [
         {
           role: "user",
