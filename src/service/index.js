@@ -7,11 +7,11 @@ const ai = new GoogleGenAI({
 });
 
 // ======================================================
-// GERAÇÃO DINÂMICA DO PROMPT (CORREÇÃO AQUI)
+// GERAÇÃO DINÂMICA DO PROMPT (OTIMIZADO PARA CATEGORIZAÇÃO)
 // ======================================================
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
   return `
-Você é um sistema especialista em análise financeira e conciliação bancária.
+Você é um sistema especialista em análise financeira e conciliação bancária de alta precisão.
 
 Abaixo está o texto extraído diretamente de um extrato bancário.
 
@@ -25,97 +25,43 @@ PERÍODO PRINCIPAL DA FATURA/EXTRATO:
 
 IMPORTANTE:
 O período acima representa o mês vigente da fatura atual.
-
 Compras parceladas detectadas no extrato DEVEM ser agrupadas neste período principal, mesmo que a data textual da compra seja antiga.
 
 ## TAREFA PRINCIPAL
+Extraia TODAS as transações financeiras presentes no texto acima e classifique-as com precisão.
 
-Extraia TODAS as transações financeiras presentes no texto acima.
+## REGRAS DE CATEGORIZAÇÃO (CRÍTICO)
 
-## REGRAS
+Você deve usar o seu conhecimento de mercado para inferir a categoria correta com base no nome do estabelecimento (comerciante). NÃO classifique tudo como "outros" por preciosismo ou preguiça.
 
-REGRA 1:
-Cada mês diferente DEVE ser um objeto separado no array "periodos".
+Guia de correspondência para ajudar sua inferência de contexto:
+- "supermercado": Carrefour, Pão de Açúcar, Extra, Assaí, Atacadão, Zona Sul, Mundial, mercado de bairro, mercearia, hortifruti, sacolão, padaria.
+- "delivery": iFood, Rappi, Zé Delivery, Uber Eats.
+- "lazer": Uber, 99Pop, postos de combustível (Shell, Ipiranga, BR), cinemas, shows, eventos, bares, restaurantes, vestuário, lojas de shopping, jogos.
+- "luz": Enel, CPFL, Light, Coelba, Cemig.
+- "água": Sabesp, Sanepar, Cedae, Copasa.
+- "internet": Claro, Vivo, Tim, Net, Oi, provedores locais de banda larga.
+- "streaming" / "assinaturas": Netflix, Spotify, Amazon Prime, Disney+, Globoplay, Deezer, Apple, Google, Crunchyroll, assinaturas de jornais/softwares.
 
-REGRA 2:
-O campo "mesAno" deve usar EXATAMENTE:
-"M/AAAA"
+SÓ use a categoria "outros" se o nome do estabelecimento for um código estritamente incompreensível ou se for absolutamente impossível determinar o ramo do comércio após tentar correlacionar o nome com marcas conhecidas.
 
-Exemplos válidos:
-- 1/2026
-- 2/2026
-- 10/2025
+## REGRAS GERAIS
 
-REGRA 3:
-Mantenha o campo "data" exatamente como aparece no extrato.
+REGRA 1: Cada mês diferente DEVE ser um objeto separado no array "periodos".
+REGRA 2: O campo "mesAno" deve usar EXATAMENTE "M/AAAA" (Ex: 1/2026, 11/2025).
+REGRA 3: Mantenha o campo "data" exatamente como aparece no extrato.
+REGRA 4: O campo "valor" deve ser número puro sem símbolo monetário.
+REGRA 5: Categorias possíveis (USE APENAS ESTAS): aluguel, luz, água, internet, supermercado, lazer, delivery, streaming, assinaturas, salário, transferência, outros.
+REGRA 6: O campo "tags" deve conter apenas uma palavra que resuma o tipo de despesa (ex: "transporte", "comida", "moradia", "combustivel", "vestuario").
+REGRA 7: Use "credito" ou "debito".
 
-REGRA 4:
-O campo "valor" deve ser número puro sem símbolo monetário.
-
-REGRA 5:
-Categorias possíveis:
-- aluguel
-- luz
-- água
-- internet
-- supermercado
-- lazer
-- delivery
-- streaming
-- assinaturas
-- salário
-- transferência
-
-Caso não saiba:
-"outros"
-
-REGRA 6:
-O campo "tags" deve conter apenas uma palavra.
-
-REGRA 7:
-Use:
-- "credito"
-- "debito"
-
-REGRA 8:
-COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
-
-Extratos frequentemente mostram:
-- data original da compra
-- parcela atual
-
-Exemplo:
-15/01/2026 MAGAZINE LUIZA 03/10
-
-Mesmo que a data da linha seja janeiro/2026, a parcela pode pertencer à fatura atual.
-
-Quando identificar:
-- 1/10
-- 2/12
-- 03/08
-- PARC 4/6
-- PARCELA 5/10
-- PX 2/5
-
-faça o seguinte:
-
+REGRA 8: COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
+Extratos frequentemente mostram a data original da compra e a parcela atual (Ex: 15/01/2026 MAGAZINE LUIZA 03/10). Quando identificar padrões como 1/10, PARC 4/6 ou PX 2/5:
 1. Use o PERÍODO PRINCIPAL DA FATURA para definir o "mesAno".
+2. NÃO use a data original da compra para agrupar parcelas em blocos de meses antigos.
+3. Mantenha a data original da linha exatamente como aparece.
 
-2. NÃO use a data original da compra para agrupar parcelas.
-
-3. Todas as parcelas devem ficar dentro do período vigente da fatura.
-
-4. Mantenha a data original da linha exatamente como aparece.
-
-5. Nunca distribua parcelas em meses antigos.
-
-REGRA 9:
-Nunca invente:
-- valores
-- datas
-- parcelas
-- comerciantes
-- categorias
+REGRA 9: Nunca invente valores, datas, parcelas, comerciantes ou categorias fora do padrão.
 
 Retorne SOMENTE JSON válido.
 `;
@@ -215,12 +161,12 @@ export async function extrairInformacoes(pdfBuffer, senha) {
   console.log(textoDoExtrato.substring(0, 500));
   console.log("================================================================");
 
-  // GERA O PROMPT COM AS VARIÁVEIS AGORA DISPONÍVEIS
+  // GERA O PROMPT COM O DICIONÁRIO DE CORRESPONDÊNCIAS E REGRAS INJETADAS
   const promptDinamico = gerarPrompt(textoDoExtrato, periodoPrincipal);
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite", // Certifique-se de que este modelo está ativo/disponível
+      model: "gemini-3.1-flash-lite",
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -282,7 +228,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
           role: "user",
           parts: [
             {
-              text: promptDinamico, // Usa o prompt gerado
+              text: promptDinamico,
             },
           ],
         },
@@ -324,7 +270,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 export async function analiseDeTransacoes(transacoes) {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite", // Certifique-se de que este modelo está ativo/disponível
+      model: "gemini-3.1-flash-lite",
       contents: [
         {
           role: "user",
@@ -346,7 +292,7 @@ Analise as transações acima e forneça:
 - Dicas simples de melhoria financeira
 
 IMPORTANTE:
-- Resposta curta
+- Resposta corta
 - Linguagem simples
 - Sem markdown
 - Sem listas complexas
