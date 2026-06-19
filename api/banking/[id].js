@@ -66,8 +66,9 @@ export default async function handler(req, res) {
         { _id: new ObjectId(id) },
         {
           $push: {
-            transacoes: {
-              $each: resposta.transacoes,
+            // Altera de transacoes para periodos
+            periodos: {
+              $each: resposta.periodos || [],
             },
           },
         },
@@ -111,7 +112,6 @@ export default async function handler(req, res) {
     }
 
     try {
-      // CORREÇÃO: Removida a reinicialização duplicada de client e db
       const usuario = await db
         .collection("users")
         .findOne(
@@ -144,7 +144,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // CORREÇÃO: Fallback obrigatório caso usem PUT, DELETE, etc.
   res.setHeader("Allow", ["POST", "GET"]);
   return res
     .status(405)

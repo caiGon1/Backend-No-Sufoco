@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const key = process.env.GOOGLE_API_KEY;
 
@@ -79,27 +78,44 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       model: "gemini-3.1-flash-lite",
       config: {
         responseMimeType: "application/json",
-        // O Schema força o modelo a cuspir o JSON exatamente nessa estrutura estruturada
         responseSchema: {
           type: "OBJECT",
           properties: {
-            transacoes: {
+            periodos: {
               type: "ARRAY",
               items: {
                 type: "OBJECT",
                 properties: {
-                  data: { type: "STRING" },
-                  descricao: { type: "STRING" },
-                  valor: { type: "NUMBER" },
-                  tipo: { type: "STRING", enum: ["credito", "debito"] },
-                  categoria: { type: "STRING"},
+                  mes: { type: "NUMBER" },
+                  ano: { type: "NUMBER" },
+
+                  transacoes: {
+                    type: "ARRAY",
+                    items: {
+                      type: "OBJECT",
+                      properties: {
+                        data: { type: "STRING" },
+                        descricao: { type: "STRING" },
+                        valor: { type: "NUMBER" },
+                        tipo: { type: "STRING", enum: ["credito", "debito"] },
+                        categoria: { type: "STRING" },
+                      },
+                      required: [
+                        "data",
+                        "descricao",
+                        "valor",
+                        "tipo",
+                        "categoria",
+                      ],
+                    },
+                  },
                 },
-                required: ["data", "descricao", "valor", "tipo", "categoria"]
-              }
-            }
+                required: ["mes", "ano", "transacoes"],
+              },
+            },
           },
-          required: ["transacoes"]
-        }
+          required: ["periodos"],
+        },
       },
       contents: [
         {
@@ -120,6 +136,7 @@ Extraia todas as transações presentes no extrato.
 
 IMPORTANTE:
 - Retorne um JSON válido contendo o objeto principal com o array de transações.
+- Coloque o mês e ano vigente. Exemplo: ""mes": "01", "ano": 2026,".
 - Coloque em "categoria" o tipo de gasto que é, como alugel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, e streaming. Pesquise o que significa caso não saiba, porém não invente.
 - Caso não identifique o que o estabelecimento é, não invente.
 `,
