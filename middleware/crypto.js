@@ -3,18 +3,24 @@ import crypto from "crypto";
 const SECRET_KEY = process.env.ENCRYPTION_KEY; 
 const ALGORITHM = "aes-256-gcm";
 
-export function criptografar(texto) {
-  // Se o texto for vazio, nulo ou se já parecer criptografado (evita dupla criptografia)
-  if (!texto || typeof texto !== "string") return texto;
+export function criptografar(valorOriginal) {
+  // Se for nulo ou undefined, retorna o próprio valor
+  if (valorOriginal === undefined || valorOriginal === null) return valorOriginal;
+
+  // CORREÇÃO: Se for número, transforma em string temporariamente para poder criptografar
+  let texto = typeof valorOriginal === "number" ? valorOriginal.toString() : valorOriginal;
+
+  if (typeof texto !== "string") return texto;
+
+  // Se já parecer criptografado, evita criptografia dupla
   if (texto.includes(":")) {
     const partes = texto.split(":");
-    if (partes.length === 3) return texto; // Já está no formato iv:tag:cipher
+    if (partes.length === 3) return texto; 
   }
 
-  // Verifica se a chave existe
   if (!SECRET_KEY) {
     console.error("ERRO CRÍTICO: ENCRYPTION_KEY não está definida nas variáveis de ambiente!");
-    return texto; // Retorna o texto original para não derrubar o servidor
+    return valorOriginal; 
   }
 
   try {
@@ -29,22 +35,21 @@ export function criptografar(texto) {
     return `${iv.toString("hex")}:${authTag}:${encrypted}`;
   } catch (err) {
     console.error("Falha ao criptografar dado:", err);
-    return texto;
+    return valorOriginal;
   }
 }
 
 export function descriptografar(textoCriptografado) {
   if (!textoCriptografado || typeof textoCriptografado !== "string") return textoCriptografado;
 
-  // CORREÇÃO DA CAUSA 1: Se o texto NÃO tiver os dois pontos separadores, 
-  // significa que é um dado antigo do banco (não criptografado). Retorna ele puro!
+  // Se o texto não tiver os dois pontos separadores, é um dado não criptografado antigo.
   if (!textoCriptografado.includes(":")) {
     return textoCriptografado; 
   }
 
   const partes = textoCriptografado.split(":");
   if (partes.length !== 3) {
-    return textoCriptografado; // Dados corrompidos ou fora do padrão, retorna o original
+    return textoCriptografado; 
   }
 
   if (!SECRET_KEY) {
@@ -55,7 +60,6 @@ export function descriptografar(textoCriptografado) {
   try {
     const [ivHex, authTagHex, encryptedText] = partes;
     
-    // Garante que nenhuma das strings extraídas seja inválida ou vazia
     if (!ivHex || !authTagHex || !encryptedText) {
       return textoCriptografado;
     }
@@ -69,9 +73,14 @@ export function descriptografar(textoCriptografado) {
     let decrypted = decipher.update(encryptedText, "hex", "utf-8");
     decrypted += decipher.final("utf-8");
 
+    // CORREÇÃO: Se o resultado descriptografado for um número num formato válido, converte de volta para Number
+    if (!isNaN(decrypted) && decrypted.trim() !== "") {
+      return Number(decrypted);
+    }
+
     return decrypted;
   } catch (error) {
-    console.error("Erro ao descriptografar dado (Chave incorreta ou formato inválido):", error.message);
-    return textoCriptografado; // Retorna o texto original seguro como fallback em vez de quebrar a API
+    console.error("Erro ao descriptografar dado:", error.message);
+    return textoCriptografado; 
   }
 }

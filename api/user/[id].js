@@ -1,13 +1,12 @@
 import { ObjectId } from "mongodb";
-import clientPromise from "../../lib/mongodb.js"; // conexão com o banco de dados
+import clientPromise from "../../lib/mongodb.js";
 import { verifyToken } from "../../middleware/authentication.js";
 import cors from "../../middleware/cors.js";
-import { descriptografar } from "../../utils/crypto.js"; // 🔓 1. Importa a função de descriptografia (ajuste o caminho se necessário)
+import { descriptografar } from "../../middleware/crypto.js"; // Garanta que o caminho está correto de acordo com sua estrutura
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;
 
-  // Trava de segurança para requisições Preflight que possam ter passado
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
@@ -44,7 +43,7 @@ export default async function handler(req, res) {
           .json({ status: "Erro", message: "Usuário não encontrado." });
       }
 
-      // 🔓 2. MAPEAMENTO E DESCRIPTOGRAFIA: Limpa as descrições para o Frontend conseguir renderizar
+      // 🔓 MAPEAMENTO E DESCRIPTOGRAFIA: Restaura a integridade de todos os campos para o React
       if (usuario.periodos && Array.isArray(usuario.periodos)) {
         usuario.periodos = usuario.periodos.map((periodo) => ({
           ...periodo,
@@ -52,7 +51,7 @@ export default async function handler(req, res) {
             ...t,
             data: descriptografar(t.data),
             descricao: descriptografar(t.descricao),
-            valor: descriptografar(t.valor),
+            valor: descriptografar(t.valor), // Voltará a ser do tipo numérico puro aqui
             tipo: descriptografar(t.tipo),
             categoria: descriptografar(t.categoria),
           })),
