@@ -79,11 +79,12 @@ export default async function handler(req, res) {
           ...periodo,
           transacoes: (periodo.transacoes || []).map((t) => ({
             ...t,
-            descricao: criptografar(t.descricao), // Protege a descrição sensível
+            descricao: criptografar(t.descricao), 
           })),
         }),
       );
 
+  
       await db.collection("users").updateOne(
         { _id: new ObjectId(id) },
         {
