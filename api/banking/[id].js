@@ -5,7 +5,7 @@ import { ObjectId } from "mongodb";
 import {
   extrairInformacoes,
   analiseDeTransacoes,
-} from "../../src/service/index.js"; 
+} from "../../src/service/index.js";
 import formidable from "formidable";
 import { verifyToken } from "../../middleware/authentication.js";
 import fs from "fs";
@@ -55,8 +55,12 @@ export default async function handler(req, res) {
       const form = formidable({});
       const [fields, files] = await form.parse(req);
 
-      const senha = Array.isArray(fields.senha) ? fields.senha[0] : fields.senha;
-      arquivoForm = Array.isArray(files.arquivo) ? files.arquivo[0] : files.arquivo;
+      const senha = Array.isArray(fields.senha)
+        ? fields.senha[0]
+        : fields.senha;
+      arquivoForm = Array.isArray(files.arquivo)
+        ? files.arquivo[0]
+        : files.arquivo;
 
       if (!arquivoForm || !arquivoForm.filepath) {
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
@@ -72,18 +76,17 @@ export default async function handler(req, res) {
       // =========================================================================
       // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE ATUALIZADA (BLINDADA CONTRA UNDEFINED)
       // =========================================================================
-      
+
       // 1. Busca o usuário com os períodos atuais salvos
-      const usuarioAtual = await db.collection("users").findOne(
-        { _id: new ObjectId(id) },
-        { projection: { periodos: 1 } }
-      );
+      const usuarioAtual = await db
+        .collection("users")
+        .findOne({ _id: new ObjectId(id) }, { projection: { periodos: 1 } });
 
       let periodosDoBanco = usuarioAtual?.periodos || [];
 
       // Criamos um Set com assinaturas de texto limpo para evitar conflitos na criptografia
       const chavesExistentes = new Set();
-      
+
       periodosDoBanco.forEach((p) => {
         // Compatibilidade: se o banco tem período antigo com mes/ano separados, normaliza para o front
         if (!p.mesAno && p.mes && p.ano) {
@@ -93,8 +96,11 @@ export default async function handler(req, res) {
         (p.transacoes || []).forEach((t) => {
           const dataDesc = descriptografar(t.data) || "";
           const descDesc = descriptografar(t.descricao) || "";
-          const valorDesc = descriptografar(t.valor) !== undefined ? String(descriptografar(t.valor)) : "";
-          
+          const valorDesc =
+            descriptografar(t.valor) !== undefined
+              ? String(descriptografar(t.valor))
+              : "";
+
           chavesExistentes.add(`${dataDesc}-${descDesc}-${valorDesc}`);
         });
       });
@@ -104,19 +110,24 @@ export default async function handler(req, res) {
       // 2. Itera sobre os períodos retornados pelo Gemini
       (resposta.periodos || []).forEach((periodoNovo) => {
         // Fallback: se por acaso a IA mandar separado, monta a string esperado pelo front
-        const stringMesAno = periodoNovo.mesAno || `${periodoNovo.mes}/${periodoNovo.ano}`;
+        const stringMesAno =
+          periodoNovo.mesAno || `${periodoNovo.mes}/${periodoNovo.ano}`;
         periodoNovo.mesAno = stringMesAno;
 
         // Procura o mês correspondente no histórico (aceita checagem por string ou legado)
         let periodoExistenteNoBanco = periodosDoBanco.find(
-          (p) => p.mesAno === stringMesAno || (p.mes === periodoNovo.mes && p.ano === periodoNovo.ano)
+          (p) =>
+            p.mesAno === stringMesAno ||
+            (p.mes === periodoNovo.mes && p.ano === periodoNovo.ano),
         );
 
         // Filtra apenas as transações do PDF que não existem no banco
-        const transacoesIneditas = (periodoNovo.transacoes || []).filter((t) => {
-          const chaveNova = `${t.data}-${t.descricao}-${t.valor}`;
-          return !chavesExistentes.has(chaveNova);
-        });
+        const transacoesIneditas = (periodoNovo.transacoes || []).filter(
+          (t) => {
+            const chaveNova = `${t.data}-${t.descricao}-${t.valor}`;
+            return !chavesExistentes.has(chaveNova);
+          },
+        );
 
         if (transacoesIneditas.length > 0) {
           houveNovasTransacoes = true;
@@ -137,7 +148,9 @@ export default async function handler(req, res) {
               periodoExistenteNoBanco.transacoes = [];
             }
             periodoExistenteNoBanco.mesAno = stringMesAno; // Garante a consistência do campo
-            periodoExistenteNoBanco.transacoes.push(...transacoesCriptografadas);
+            periodoExistenteNoBanco.transacoes.push(
+              ...transacoesCriptografadas,
+            );
           } else {
             // Se o mês é inédito, adiciona a nova estrutura organizada por mês/ano
             periodosDoBanco.push({
@@ -148,21 +161,30 @@ export default async function handler(req, res) {
         }
       });
 
+      // Logo antes do updateOne, adicione:
+      console.log("===== [DEBUG] PERÍODOS A SALVAR =====");
+      periodosDoBanco.forEach((p, i) => {
+        console.log(
+          `  ${i + 1}: mesAno="${p.mesAno}" | ${p.transacoes?.length} transações`,
+        );
+      });
+      console.log("=====================================");
       // 3. Salva no banco apenas se houver novas atualizações de transações
       if (houveNovasTransacoes) {
         await db.collection("users").updateOne(
           { _id: new ObjectId(id) },
           {
             $set: {
-              periodos: periodosDoBanco, 
+              periodos: periodosDoBanco,
             },
-          }
+          },
         );
       } else {
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
         return res.status(400).json({
           status: "Erro",
-          message: "Todas as transações deste arquivo já foram importadas anteriormente.",
+          message:
+            "Todas as transações deste arquivo já foram importadas anteriormente.",
         });
       }
 
@@ -172,7 +194,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         status: "Sucesso",
         message: "Arquivo processado. Novos registros mesclados com sucesso!",
-        resposta: resposta, 
+        resposta: resposta,
       });
     } catch (e) {
       console.error("Erro interno no upload:", e);
