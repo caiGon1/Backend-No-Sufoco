@@ -74,7 +74,7 @@ export default async function handler(req, res) {
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
       // =========================================================================
-      // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE ATUALIZADA (BLINDADA CONTRA UNDEFINED)
+      // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE ATUALIZADA (BLINDADA CONTRA CONFLITO DE MESES)
       // =========================================================================
 
       // 1. Busca o usuário com os períodos atuais salvos
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
 
       let periodosDoBanco = usuarioAtual?.periodos || [];
 
-      // Criamos um Set com assinaturas de texto limpo para evitar conflitos na criptografia
+      // Criamos um Set com assinaturas de texto limpo + período correspondente para evitar falsos positivos
       const chavesExistentes = new Set();
 
       periodosDoBanco.forEach((p) => {
@@ -92,6 +92,8 @@ export default async function handler(req, res) {
         if (!p.mesAno && p.mes && p.ano) {
           p.mesAno = `${p.mes}/${p.ano}`;
         }
+
+        const periodoChave = p.mesAno;
 
         (p.transacoes || []).forEach((t) => {
           const dataDesc = descriptografar(t.data) || "";
@@ -101,7 +103,10 @@ export default async function handler(req, res) {
               ? String(descriptografar(t.valor))
               : "";
 
-          chavesExistentes.add(`${dataDesc}-${descDesc}-${valorDesc}`);
+          // 🔒 ALTERAÇÃO: Vincula a chave estritamente ao período dela.
+          // Isso garante que se 'maio' foi parar erroneamente em 'junho' no banco por bugs passados,
+          // o arquivo novo que processa o mês correto de 'maio' ainda consiga inserir seus registros normalmente.
+          chavesExistentes.add(`${periodoChave}-${dataDesc}-${descDesc}-${valorDesc}`);
         });
       });
 
@@ -109,7 +114,7 @@ export default async function handler(req, res) {
 
       // 2. Itera sobre os períodos retornados pelo Gemini
       (resposta.periodos || []).forEach((periodoNovo) => {
-        // Fallback: se por acaso a IA mandar separado, monta a string esperado pelo front
+        // Fallback: se por acaso a IA mandar separado, monta a string esperada pelo front
         const stringMesAno =
           periodoNovo.mesAno || `${periodoNovo.mes}/${periodoNovo.ano}`;
         periodoNovo.mesAno = stringMesAno;
@@ -121,10 +126,11 @@ export default async function handler(req, res) {
             (p.mes === periodoNovo.mes && p.ano === periodoNovo.ano),
         );
 
-        // Filtra apenas as transações do PDF que não existem no banco
+        // Filtra apenas as transações do PDF que não existem NESTE período específico do banco
         const transacoesIneditas = (periodoNovo.transacoes || []).filter(
           (t) => {
-            const chaveNova = `${t.data}-${t.descricao}-${t.valor}`;
+            // 🔒 ALTERAÇÃO: Valida se a transação já existe dentro deste escopo de mês/ano específico
+            const chaveNova = `${stringMesAno}-${t.data}-${t.descricao}-${t.valor}`;
             return !chavesExistentes.has(chaveNova);
           },
         );
@@ -139,7 +145,7 @@ export default async function handler(req, res) {
             valor: criptografar(t.valor !== undefined ? t.valor : 0),
             tipo: criptografar(t.tipo || "debito"),
             categoria: criptografar(t.categoria || "outros"),
-            tags: criptografar(t.tags || "outros"), // 🔒 Agora suporta o campo tags do seu layout
+            tags: criptografar(t.tags || "outros"), // 🔒 Suporta o campo tags do seu layout
           }));
 
           if (periodoExistenteNoBanco) {
@@ -161,7 +167,7 @@ export default async function handler(req, res) {
         }
       });
 
-      // Logo antes do updateOne, adicione:
+      // Bloco de logs para acompanhamento
       console.log("===== [DEBUG] PERÍODOS A SALVAR =====");
       periodosDoBanco.forEach((p, i) => {
         console.log(
@@ -169,6 +175,7 @@ export default async function handler(req, res) {
         );
       });
       console.log("=====================================");
+
       // 3. Salva no banco apenas se houver novas atualizações de transações
       if (houveNovasTransacoes) {
         await db.collection("users").updateOne(
