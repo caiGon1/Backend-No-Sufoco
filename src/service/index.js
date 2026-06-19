@@ -1,3 +1,4 @@
+```js
 import { GoogleGenAI } from "@google/genai";
 
 const key = process.env.GOOGLE_API_KEY;
@@ -24,100 +25,214 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
     for (let paginaAtual = 1; paginaAtual <= pdf.numPages; paginaAtual++) {
       const page = await pdf.getPage(paginaAtual);
       const textContent = await page.getTextContent();
-      const textosDaPagina = textContent.items.map((item) => item.str);
+
+      const textosDaPagina = textContent.items.map(
+        (item) => item.str
+      );
+
       textoCompleto += textosDaPagina.join(" ") + "\n";
     }
 
-    textoCompleto = textoCompleto.replace(/\s+/g, " ").trim();
+    textoCompleto = textoCompleto
+      .replace(/\s+/g, " ")
+      .trim();
 
     if (!textoCompleto || textoCompleto.length < 10) {
-      throw new Error("Não foi possível extrair conteúdo textual do PDF.");
+      throw new Error(
+        "Não foi possível extrair conteúdo textual do PDF."
+      );
     }
 
     return textoCompleto;
   } catch (error) {
     console.error("ERRO PDF:", error);
+
     if (
       error?.name === "PasswordException" ||
       error?.message?.toLowerCase().includes("password")
     ) {
-      throw new Error("Senha do PDF incorreta ou não fornecida.");
+      throw new Error(
+        "Senha do PDF incorreta ou não fornecida."
+      );
     }
-    throw new Error(`Falha ao ler o PDF: ${error.message}`);
+
+    throw new Error(
+      `Falha ao ler o PDF: ${error.message}`
+    );
   }
+}
+
+// ======================================================
+// DETECTA PERÍODO PRINCIPAL DA FATURA
+// ======================================================
+function detectarPeriodoPrincipal(texto) {
+  const matches =
+    texto.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
+
+  const contador = {};
+
+  for (const item of matches) {
+    const [mes, ano] = item.split("/");
+
+    const chave = `${parseInt(mes, 10)}/${ano}`;
+
+    contador[chave] = (contador[chave] || 0) + 1;
+  }
+
+  let periodoPrincipal = null;
+  let maior = 0;
+
+  for (const [periodo, quantidade] of Object.entries(contador)) {
+    if (quantidade > maior) {
+      maior = quantidade;
+      periodoPrincipal = periodo;
+    }
+  }
+
+  return periodoPrincipal;
 }
 
 // ======================================================
 // EXTRAÇÃO DE TRANSAÇÕES
 // ======================================================
-export async function extrairInformacoes(pdfBuffer, senha) {
+export async function extrairInformacoes(
+  pdfBuffer,
+  senha
+) {
   let textoDoExtrato = "";
 
   try {
-    textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
+    textoDoExtrato = await extrairTextoDePDF(
+      pdfBuffer,
+      senha
+    );
   } catch (error) {
     throw new Error(error.message);
   }
 
   // -------------------------------------------------------
-  // DEBUG: Mostra os primeiros 500 chars do texto extraído
-  // Verifique no terminal se as datas de meses diferentes aparecem aqui.
-  // Remova este bloco após o diagnóstico.
+  // DETECTA PERÍODO PRINCIPAL
   // -------------------------------------------------------
-  console.log("===== [DEBUG] TEXTO EXTRAÍDO DO PDF (primeiros 500 chars) =====");
-  console.log(textoDoExtrato.substring(0, 500));
-  console.log("================================================================");
+  const periodoPrincipal =
+    detectarPeriodoPrincipal(textoDoExtrato);
+
+  console.log(
+    "===== [DEBUG] PERÍODO PRINCIPAL DETECTADO ====="
+  );
+
+  console.log(periodoPrincipal);
+
+  console.log(
+    "==============================================="
+  );
+
+  // -------------------------------------------------------
+  // DEBUG TEXTO EXTRAÍDO
+  // -------------------------------------------------------
+  console.log(
+    "===== [DEBUG] TEXTO EXTRAÍDO DO PDF (primeiros 500 chars) ====="
+  );
+
+  console.log(
+    textoDoExtrato.substring(0, 500)
+  );
+
+  console.log(
+    "================================================================"
+  );
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          properties: {
-            periodos: {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  mesAno: { type: "STRING" },
-                  transacoes: {
-                    type: "ARRAY",
-                    items: {
-                      type: "OBJECT",
-                      properties: {
-                        data: { type: "STRING" },
-                        descricao: { type: "STRING" },
-                        valor: { type: "NUMBER" },
-                        tipo: { type: "STRING", enum: ["credito", "debito"] },
-                        categoria: { type: "STRING" },
-                        tags: { type: "STRING" },
+    const response =
+      await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite",
+
+        config: {
+          responseMimeType:
+            "application/json",
+
+          responseSchema: {
+            type: "OBJECT",
+
+            properties: {
+              periodos: {
+                type: "ARRAY",
+
+                items: {
+                  type: "OBJECT",
+
+                  properties: {
+                    mesAno: {
+                      type: "STRING",
+                    },
+
+                    transacoes: {
+                      type: "ARRAY",
+
+                      items: {
+                        type: "OBJECT",
+
+                        properties: {
+                          data: {
+                            type: "STRING",
+                          },
+
+                          descricao: {
+                            type: "STRING",
+                          },
+
+                          valor: {
+                            type: "NUMBER",
+                          },
+
+                          tipo: {
+                            type: "STRING",
+
+                            enum: [
+                              "credito",
+                              "debito",
+                            ],
+                          },
+
+                          categoria: {
+                            type: "STRING",
+                          },
+
+                          tags: {
+                            type: "STRING",
+                          },
+                        },
+
+                        required: [
+                          "data",
+                          "descricao",
+                          "valor",
+                          "tipo",
+                          "categoria",
+                          "tags",
+                        ],
                       },
-                      required: [
-                        "data",
-                        "descricao",
-                        "valor",
-                        "tipo",
-                        "categoria",
-                        "tags",
-                      ],
                     },
                   },
+
+                  required: [
+                    "mesAno",
+                    "transacoes",
+                  ],
                 },
-                required: ["mesAno", "transacoes"],
               },
             },
+
+            required: ["periodos"],
           },
-          required: ["periodos"],
         },
-      },
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `
+
+        contents: [
+          {
+            role: "user",
+
+            parts: [
+              {
+                text: `
 Você é um sistema especialista em análise financeira e conciliação bancária.
 
 Abaixo está o texto extraído diretamente de um extrato bancário.
@@ -127,157 +242,195 @@ CONTEÚDO DO EXTRATO:
 ${textoDoExtrato}
 """
 
+PERÍODO PRINCIPAL DA FATURA/EXTRATO:
+"${periodoPrincipal}"
+
+IMPORTANTE:
+O período acima representa o mês vigente da fatura atual.
+
+Compras parceladas detectadas no extrato DEVEM ser agrupadas neste período principal, mesmo que a data textual da compra seja antiga.
+
 ## TAREFA PRINCIPAL
+
 Extraia TODAS as transações financeiras presentes no texto acima.
 
 ## REGRAS OBRIGATÓRIAS DE AGRUPAMENTO POR PERÍODO
 
-**REGRA 1 — SEPARAÇÃO OBRIGATÓRIA POR MÊS/ANO:**
+REGRA 1 — SEPARAÇÃO OBRIGATÓRIA POR MÊS/ANO:
+
 Cada mês diferente DEVE ser um objeto separado no array "periodos".
+
 NÃO agrupe transações de meses diferentes no mesmo objeto.
 
-Exemplo CORRETO de saída quando há transações de jan/2026 e fev/2026:
+Exemplo CORRETO:
+
 {
   "periodos": [
     {
       "mesAno": "1/2026",
-      "transacoes": [ ...apenas transações de janeiro de 2026... ]
+      "transacoes": []
     },
     {
       "mesAno": "2/2026",
-      "transacoes": [ ...apenas transações de fevereiro de 2026... ]
+      "transacoes": []
     }
   ]
 }
 
-Exemplo ERRADO (NÃO FAÇA ISSO — mistura meses):
-{
-  "periodos": [
-    {
-      "mesAno": "1/2026-2/2026",
-      "transacoes": [ ...transações de janeiro E fevereiro misturadas... ]
-    }
-  ]
-}
+REGRA 2 — FORMATO DO CAMPO "mesAno":
 
-**REGRA 2 — FORMATO DO CAMPO "mesAno":**
-Use EXATAMENTE o formato "M/AAAA" sem zero à esquerda no mês.
-- Janeiro de 2026 → "1/2026"  ✅
-- Fevereiro de 2026 → "2/2026"  ✅
-- Outubro de 2025 → "10/2025"  ✅
-- "01/2026" ou "01-2026" → ERRADO ❌
+Use EXATAMENTE o formato:
 
-Para identificar o mês de cada transação, use a data da própria transação (campo "data").
+"M/AAAA"
 
-**REGRA 3 — CAMPO "data":**
-Mantenha o formato original da data como aparece no extrato (ex: "15/01/2026" ou "2026-01-15").
+Exemplos:
+- 1/2026
+- 2/2026
+- 10/2025
 
-**REGRA 4 — CAMPO "valor":**
-Sempre um número puro sem símbolos. Ex: 150.00, não "R$ 150,00".
+NÃO use:
+- 01/2026
+- 01-2026
 
-**REGRA 5 — CAMPO "categoria":**
-Tipo de gasto: aluguel, luz, água, internet, supermercado, lazer, delivery, streaming, assinaturas, salário, transferência. Se não souber, deduza e/ou pesquise o nome. Caso o contrário classifique como "outros".
+REGRA 3 — CAMPO "data":
 
-**REGRA 6 — CAMPO "tags":**
-Uma única palavra que resume a transação. Ex: "salário", "aluguel", "mercado", "netflix", "uber". Se não souber, deduza e/ou pesquise o nome. Caso o contrário classifique como "outros".
+Mantenha o formato original da data como aparece no extrato.
 
-**REGRA 7 — CAMPO "tipo":**
-"credito" para entradas (recebimentos, depósitos, salário).
-"debito" para saídas (pagamentos, compras, saques).
+REGRA 4 — CAMPO "valor":
 
-**REGRA 8 — IDENTIFICAÇÃO DE PARCELAMENTOS (OBRIGATÓRIA)**
-**REGRA 8 — COMPRAS PARCELADAS DEVEM PERTENCER AO PERÍODO DA FATURA**
+Sempre número puro sem símbolo.
 
-Extratos de cartão frequentemente exibem:
+Correto:
+150.90
 
-* a data original da compra
-* junto com a parcela atual
+Errado:
+"R$ 150,90"
+
+REGRA 5 — CAMPO "categoria":
+
+Categorias possíveis:
+- aluguel
+- luz
+- água
+- internet
+- supermercado
+- lazer
+- delivery
+- streaming
+- assinaturas
+- salário
+- transferência
+
+Se não souber:
+"outros"
+
+REGRA 6 — CAMPO "tags":
+
+Uma única palavra.
+
+Exemplos:
+- uber
+- ifood
+- netflix
+- salário
+- mercado
+
+Se não souber:
+"outros"
+
+REGRA 7 — CAMPO "tipo":
+
+Use:
+- "credito"
+- "debito"
+
+REGRA 8 — COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA
+
+Extratos de cartão frequentemente mostram:
+- a data original da compra
+- e também a parcela atual
 
 Exemplo:
+"15/01/2026 MAGAZINE LUIZA 03/10"
 
-```json id="n7y2jq"
-{
-  "descricao": "MAGAZINE LUIZA 03/10",
-  "data": "15/01/2026"
-}
-```
+Mesmo que a data da linha seja janeiro/2026, essa parcela pode pertencer à fatura atual.
 
-Mesmo que a data exibida seja "15/01/2026", essa transação pode estar presente em uma fatura de MAIO/2026.
+Quando identificar sinais de parcelamento como:
+- 1/10
+- 2/12
+- 03/08
+- PARC 4/6
+- PARCELA 5/10
+- PX 2/5
 
-NESTE CASO:
+faça o seguinte:
 
-* considere o período vigente da FATURA
-* NÃO a data original da compra
+1. Considere que a compra pertence ao PERÍODO PRINCIPAL DA FATURA informado acima.
 
-IMPORTANTE:
-Compras parceladas DEVEM ser agrupadas no mesmo "mesAno" correspondente ao período atual do extrato/fatura.
+2. NÃO use a data original da compra para definir o campo "mesAno".
 
-Exemplo:
-Se o extrato pertence à fatura de maio de 2026:
+3. Todas as parcelas detectadas devem ser agrupadas no período vigente da fatura.
 
-```json id="z0a9dg"
-{
-  "mesAno": "5/2026"
-}
-```
+4. Mantenha a data original exatamente como aparece no extrato.
 
-Então TODAS as parcelas presentes nessa fatura devem pertencer a:
+5. Nunca distribua parcelas em meses antigos por causa da data original da compra.
 
-```json id="6ux7hj"
-{
-  "mesAno": "5/2026"
-}
-```
+REGRA 9 — NÃO INVENTAR INFORMAÇÕES
 
-mesmo que a data textual da linha mostre janeiro, fevereiro ou março.
+Nunca invente:
+- valores
+- datas
+- parcelas
+- categorias
+- comerciantes
 
-Sinais de parcelamento:
-
-* "1/10"
-* "2/12"
-* "03/08"
-* "PARC 4/6"
-* "PARCELA 5/10"
-* "PX 2/5"
-
-Quando identificar parcelamento:
-
-* priorize o período vigente da FATURA
-* NÃO use a data original da compra para definir o "mesAno"
-* mantenha a transação dentro do mês atual do extrato
-
-Nunca distribua parcelas em meses antigos usando a data original da compra.
-
-`,
-            },
-          ],
-        },
-      ],
-    });
+Extraia apenas o que estiver claramente presente no extrato.
+                `,
+              },
+            ],
+          },
+        ],
+      });
 
     const texto = response.text.trim();
 
-    // -------------------------------------------------------
-    // DEBUG: Mostra o JSON bruto retornado pela IA
-    // Verifique quantos períodos a IA está retornando.
-    // Remova este bloco após o diagnóstico.
-    // -------------------------------------------------------
     try {
       const parsed = JSON.parse(texto);
-      console.log("===== [DEBUG] RESPOSTA DA IA — PERÍODOS ENCONTRADOS =====");
+
+      console.log(
+        "===== [DEBUG] RESPOSTA DA IA — PERÍODOS ENCONTRADOS ====="
+      );
+
       parsed.periodos?.forEach((p, i) => {
-        console.log(`  Período ${i + 1}: mesAno="${p.mesAno}" | ${p.transacoes?.length ?? 0} transações`);
+        console.log(
+          `Período ${
+            i + 1
+          }: mesAno="${p.mesAno}" | ${
+            p.transacoes?.length ?? 0
+          } transações`
+        );
       });
-      console.log("==========================================================");
+
+      console.log(
+        "=========================================================="
+      );
+
       return parsed;
     } catch (parseError) {
-      console.error("===== [DEBUG] FALHA AO PARSEAR JSON DA IA =====");
-      console.error("Texto bruto recebido:", texto.substring(0, 300));
+      console.error(
+        "===== [DEBUG] FALHA AO PARSEAR JSON DA IA ====="
+      );
+
+      console.error(
+        "Texto bruto recebido:",
+        texto.substring(0, 300)
+      );
+
       throw parseError;
     }
-
   } catch (error) {
     console.error("ERRO GEMINI:", error);
+
     throw new Error(
       `Falha ao processar as informações do extrato: ${error.message}`
     );
@@ -287,23 +440,32 @@ Nunca distribua parcelas em meses antigos usando a data original da compra.
 // ======================================================
 // ANÁLISE FINANCEIRA
 // ======================================================
-export async function analiseDeTransacoes(transacoes) {
+export async function analiseDeTransacoes(
+  transacoes
+) {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `
+    const response =
+      await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite",
+
+        contents: [
+          {
+            role: "user",
+
+            parts: [
+              {
+                text: `
 Você é um sistema especialista em análise financeira.
 
 Abaixo estão as transações extraídas de um extrato bancário.
 
 TRANSAÇÕES:
 """
-${JSON.stringify(transacoes, null, 2)}
+${JSON.stringify(
+  transacoes,
+  null,
+  2
+)}
 """
 
 Analise as transações acima e forneça:
@@ -317,16 +479,20 @@ IMPORTANTE:
 - Sem markdown
 - Sem listas complexas
 - Fácil de entender
-              `,
-            },
-          ],
-        },
-      ],
-    });
+                `,
+              },
+            ],
+          },
+        ],
+      });
 
     return response.text.trim();
   } catch (error) {
     console.error("ERRO ANÁLISE:", error);
-    throw new Error(`Falha ao gerar análise financeira: ${error.message}`);
+
+    throw new Error(
+      `Falha ao gerar análise financeira: ${error.message}`
+    );
   }
 }
+```
