@@ -72,7 +72,6 @@ export async function extrairInformacoes(pdfBuffer, senha) {
               items: {
                 type: "OBJECT",
                 properties: {
-                  // 🎯 CORREÇÃO: Força o Gemini a gerar a propriedade 'mesAno' unificada como string que seu backend e front esperam
                   mesAno: { type: "STRING" }, 
                   transacoes: {
                     type: "ARRAY",
@@ -84,19 +83,20 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                         valor: { type: "NUMBER" },
                         tipo: { type: "STRING", enum: ["credito", "debito"] },
                         categoria: { type: "STRING" },
+                        tags: { type: "STRING" }, // 🎯 CORREÇÃO: Definido o campo que estava faltando no esquema!
                       },
                       required: [
                         "data",
                         "descricao",
                         "valor",
                         "tipo",
-                        "tags", // Se o seu front mapeia como 'tags' a badge visual, mantenha a tipagem interna do seu objeto
                         "categoria",
+                        "tags",
                       ],
                     },
                   },
                 },
-                required: ["mesAno", "transacoes"], // 🔑 Garante o vínculo do período com suas respectivas transações
+                required: ["mesAno", "transacoes"],
               },
             },
           },
@@ -121,9 +121,10 @@ ${textoDoExtrato}
 Extraia todas as transações presentes no extrato agrupando-as por seu respectivo período (mês e ano).
 
 REGRAS CRÍTICAS DE NEGÓCIO:
-- Se o extrato contiver registros de meses diferentes (ex: transações em Janeiro e transações em Fevereiro), você DEVE criar objetos separados dentro do array "periodos", um para cada mês correspondente.
-- O campo "mesAno" deve seguir estritamente o formato padrão "M/AAAA" ou "MM/AAAA" baseado nas datas das transações daquele bloco (Exemplo: "1/2026" para Janeiro de 2026, "2/2026" para Fevereiro).
-- Coloque em "categoria" o tipo de gasto correspondente (ex: aluguel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, streaming). Se não conseguir identificar, use "outros". Não invente estabelecimentos.
+- Se o extrato contiver registros de meses diferentes, crie objetos separados dentro do array "periodos", um para cada mês correspondente.
+- O campo "mesAno" deve seguir estritamente o formato padrão "M/AAAA" (Exemplo: "1/2026" para Janeiro de 2026, "2/2026" para Fevereiro).
+- Coloque em "categoria" o tipo de gasto (ex: aluguel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, streaming). Se não souber, use "outros".
+- Coloque em "tags" uma palavra curta que resuma a transação (ex: "salário", "aluguel", "mercado", "outros").
 - Mantenha o valor como um número puro.
 `,
             },
