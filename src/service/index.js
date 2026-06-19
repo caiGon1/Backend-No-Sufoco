@@ -98,7 +98,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                     items: {
                       type: "OBJECT",
                       properties: {
-                        data: { type: "DATE" },
+                        data: { type: "STRING" },
                         descricao: { type: "STRING" },
                         valor: { type: "NUMBER" },
                         tipo: { type: "STRING", enum: ["credito", "debito"] },
