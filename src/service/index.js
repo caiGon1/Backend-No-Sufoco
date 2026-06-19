@@ -1,4 +1,3 @@
-```js
 import { GoogleGenAI } from "@google/genai";
 
 const key = process.env.GOOGLE_API_KEY;
@@ -7,8 +6,11 @@ const ai = new GoogleGenAI({
   apiKey: key,
 });
 
-```js id="7xtm7u"
-const prompt = `
+// ======================================================
+// GERAÇÃO DINÂMICA DO PROMPT (CORREÇÃO AQUI)
+// ======================================================
+function gerarPrompt(textoDoExtrato, periodoPrincipal) {
+  return `
 Você é um sistema especialista em análise financeira e conciliação bancária.
 
 Abaixo está o texto extraído diretamente de um extrato bancário.
@@ -117,8 +119,7 @@ Nunca invente:
 
 Retorne SOMENTE JSON válido.
 `;
-```
-
+}
 
 // ======================================================
 // EXTRAÇÃO DE TEXTO DO PDF
@@ -139,21 +140,15 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
       const page = await pdf.getPage(paginaAtual);
       const textContent = await page.getTextContent();
 
-      const textosDaPagina = textContent.items.map(
-        (item) => item.str
-      );
+      const textosDaPagina = textContent.items.map((item) => item.str);
 
       textoCompleto += textosDaPagina.join(" ") + "\n";
     }
 
-    textoCompleto = textoCompleto
-      .replace(/\s+/g, " ")
-      .trim();
+    textoCompleto = textoCompleto.replace(/\s+/g, " ").trim();
 
     if (!textoCompleto || textoCompleto.length < 10) {
-      throw new Error(
-        "Não foi possível extrair conteúdo textual do PDF."
-      );
+      throw new Error("Não foi possível extrair conteúdo textual do PDF.");
     }
 
     return textoCompleto;
@@ -164,14 +159,10 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
       error?.name === "PasswordException" ||
       error?.message?.toLowerCase().includes("password")
     ) {
-      throw new Error(
-        "Senha do PDF incorreta ou não fornecida."
-      );
+      throw new Error("Senha do PDF incorreta ou não fornecida.");
     }
 
-    throw new Error(
-      `Falha ao ler o PDF: ${error.message}`
-    );
+    throw new Error(`Falha ao ler o PDF: ${error.message}`);
   }
 }
 
@@ -179,16 +170,13 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
 // DETECTA PERÍODO PRINCIPAL DA FATURA
 // ======================================================
 function detectarPeriodoPrincipal(texto) {
-  const matches =
-    texto.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
+  const matches = texto.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
 
   const contador = {};
 
   for (const item of matches) {
     const [mes, ano] = item.split("/");
-
     const chave = `${parseInt(mes, 10)}/${ano}`;
-
     contador[chave] = (contador[chave] || 0) + 1;
   }
 
@@ -208,189 +196,122 @@ function detectarPeriodoPrincipal(texto) {
 // ======================================================
 // EXTRAÇÃO DE TRANSAÇÕES
 // ======================================================
-export async function extrairInformacoes(
-  pdfBuffer,
-  senha
-) {
+export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
 
   try {
-    textoDoExtrato = await extrairTextoDePDF(
-      pdfBuffer,
-      senha
-    );
+    textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
   } catch (error) {
     throw new Error(error.message);
   }
 
-  // -------------------------------------------------------
-  // DETECTA PERÍODO PRINCIPAL
-  // -------------------------------------------------------
-  const periodoPrincipal =
-    detectarPeriodoPrincipal(textoDoExtrato);
+  const periodoPrincipal = detectarPeriodoPrincipal(textoDoExtrato);
 
-  console.log(
-    "===== [DEBUG] PERÍODO PRINCIPAL DETECTADO ====="
-  );
-
+  console.log("===== [DEBUG] PERÍODO PRINCIPAL DETECTADO =====");
   console.log(periodoPrincipal);
+  console.log("===============================================");
 
-  console.log(
-    "==============================================="
-  );
+  console.log("===== [DEBUG] TEXTO EXTRAÍDO DO PDF (primeiros 500 chars) =====");
+  console.log(textoDoExtrato.substring(0, 500));
+  console.log("================================================================");
 
-  // -------------------------------------------------------
-  // DEBUG TEXTO EXTRAÍDO
-  // -------------------------------------------------------
-  console.log(
-    "===== [DEBUG] TEXTO EXTRAÍDO DO PDF (primeiros 500 chars) ====="
-  );
-
-  console.log(
-    textoDoExtrato.substring(0, 500)
-  );
-
-  console.log(
-    "================================================================"
-  );
+  // GERA O PROMPT COM AS VARIÁVEIS AGORA DISPONÍVEIS
+  const promptDinamico = gerarPrompt(textoDoExtrato, periodoPrincipal);
 
   try {
-    const response =
-      await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
-
-        config: {
-          responseMimeType:
-            "application/json",
-
-          responseSchema: {
-            type: "OBJECT",
-
-            properties: {
-              periodos: {
-                type: "ARRAY",
-
-                items: {
-                  type: "OBJECT",
-
-                  properties: {
-                    mesAno: {
-                      type: "STRING",
-                    },
-
-                    transacoes: {
-                      type: "ARRAY",
-
-                      items: {
-                        type: "OBJECT",
-
-                        properties: {
-                          data: {
-                            type: "STRING",
-                          },
-
-                          descricao: {
-                            type: "STRING",
-                          },
-
-                          valor: {
-                            type: "NUMBER",
-                          },
-
-                          tipo: {
-                            type: "STRING",
-
-                            enum: [
-                              "credito",
-                              "debito",
-                            ],
-                          },
-
-                          categoria: {
-                            type: "STRING",
-                          },
-
-                          tags: {
-                            type: "STRING",
-                          },
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-lite", // Certifique-se de que este modelo está ativo/disponível
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            periodos: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  mesAno: {
+                    type: "STRING",
+                  },
+                  transacoes: {
+                    type: "ARRAY",
+                    items: {
+                      type: "OBJECT",
+                      properties: {
+                        data: {
+                          type: "STRING",
                         },
-
-                        required: [
-                          "data",
-                          "descricao",
-                          "valor",
-                          "tipo",
-                          "categoria",
-                          "tags",
-                        ],
+                        descricao: {
+                          type: "STRING",
+                        },
+                        valor: {
+                          type: "NUMBER",
+                        },
+                        tipo: {
+                          type: "STRING",
+                          enum: ["credito", "debito"],
+                        },
+                        categoria: {
+                          type: "STRING",
+                        },
+                        tags: {
+                          type: "STRING",
+                        },
                       },
+                      required: [
+                        "data",
+                        "descricao",
+                        "valor",
+                        "tipo",
+                        "categoria",
+                        "tags",
+                      ],
                     },
                   },
-
-                  required: [
-                    "mesAno",
-                    "transacoes",
-                  ],
                 },
+                required: ["mesAno", "transacoes"],
               },
             },
-
-            required: ["periodos"],
           },
+          required: ["periodos"],
         },
-
-        contents: [
-          {
-            role: "user",
-
-            parts: [
-              {
-                text: prompt,
-              },
-            ],
-          },
-        ],
-      });
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: promptDinamico, // Usa o prompt gerado
+            },
+          ],
+        },
+      ],
+    });
 
     const texto = response.text.trim();
 
     try {
       const parsed = JSON.parse(texto);
 
-      console.log(
-        "===== [DEBUG] RESPOSTA DA IA — PERÍODOS ENCONTRADOS ====="
-      );
-
+      console.log("===== [DEBUG] RESPOSTA DA IA — PERÍODOS ENCONTRADOS =====");
       parsed.periodos?.forEach((p, i) => {
         console.log(
-          `Período ${
-            i + 1
-          }: mesAno="${p.mesAno}" | ${
+          `Período ${i + 1}: mesAno="${p.mesAno}" | ${
             p.transacoes?.length ?? 0
           } transações`
         );
       });
-
-      console.log(
-        "=========================================================="
-      );
+      console.log("==========================================================");
 
       return parsed;
     } catch (parseError) {
-      console.error(
-        "===== [DEBUG] FALHA AO PARSEAR JSON DA IA ====="
-      );
-
-      console.error(
-        "Texto bruto recebido:",
-        texto.substring(0, 300)
-      );
-
+      console.error("===== [DEBUG] FALHA AO PARSEAR JSON DA IA =====");
+      console.error("Texto bruto recebido:", texto.substring(0, 300));
       throw parseError;
     }
   } catch (error) {
     console.error("ERRO GEMINI:", error);
-
     throw new Error(
       `Falha ao processar as informações do extrato: ${error.message}`
     );
@@ -400,32 +321,23 @@ export async function extrairInformacoes(
 // ======================================================
 // ANÁLISE FINANCEIRA
 // ======================================================
-export async function analiseDeTransacoes(
-  transacoes
-) {
+export async function analiseDeTransacoes(transacoes) {
   try {
-    const response =
-      await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
-
-        contents: [
-          {
-            role: "user",
-
-            parts: [
-              {
-                text: `
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-lite", // Certifique-se de que este modelo está ativo/disponível
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `
 Você é um sistema especialista em análise financeira.
 
 Abaixo estão as transações extraídas de um extrato bancário.
 
 TRANSAÇÕES:
 """
-${JSON.stringify(
-  transacoes,
-  null,
-  2
-)}
+${JSON.stringify(transacoes, null, 2)}
 """
 
 Analise as transações acima e forneça:
@@ -440,19 +352,15 @@ IMPORTANTE:
 - Sem listas complexas
 - Fácil de entender
                 `,
-              },
-            ],
-          },
-        ],
-      });
+            },
+          ],
+        },
+      ],
+    });
 
     return response.text.trim();
   } catch (error) {
     console.error("ERRO ANÁLISE:", error);
-
-    throw new Error(
-      `Falha ao gerar análise financeira: ${error.message}`
-    );
+    throw new Error(`Falha ao gerar análise financeira: ${error.message}`);
   }
 }
-```
