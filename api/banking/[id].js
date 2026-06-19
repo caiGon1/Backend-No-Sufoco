@@ -5,7 +5,7 @@ import { ObjectId } from "mongodb";
 import {
   extrairInformacoes,
   analiseDeTransacoes,
-} from "../../src/service/index.js"; // Import unificado
+} from "../../src/service/index.js"; 
 import formidable from "formidable";
 import { verifyToken } from "../../middleware/authentication.js";
 import fs from "fs";
@@ -18,10 +18,8 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // 1. Executa o middleware de CORS atualizado
   if (cors(req, res)) return;
 
-  // 2. Trava de segurança para requisições Preflight que possam ter passado
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
@@ -29,7 +27,7 @@ export default async function handler(req, res) {
   const client = await clientPromise;
   const db = client.db("NoSufocoDB");
 
-  // --- MÉTODO POST: Upload e Extração ---
+  // --- MÉTODO POST: Upload, Extração e Mesclagem Inteligente ---
   if (req.method === "POST") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
@@ -69,56 +67,100 @@ export default async function handler(req, res) {
       const pdfBuffer = fs.readFileSync(arquivoForm.filepath);
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
+      // =========================================================================
+      // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE (EVITA DUPLICADOS NO MESMO OBJETO)
+      // =========================================================================
+      
+      // 1. Busca o usuário atualizado com todos os períodos que ele já tem salvos
+      const usuarioAtual = await db.collection("users").findOne(
+        { _id: new ObjectId(id) },
+        { projection: { periodos: 1 } }
+      );
 
-      const mesesDoExtrato = (resposta.periodos || []).map((p) => p.mesAno); // Ex: ["05/2026", "06/2026"]
+      // Inicializa o array de períodos caso o usuário não tenha nenhum ainda
+      let periodosDoBanco = usuarioAtual?.periodos || [];
 
-      if (mesesDoExtrato.length > 0) {
-        // 2. Procura no banco se este usuário específico já possui algum desses meses salvos
-        const periodoExistente = await db.collection("users").findOne({
-          _id: new ObjectId(id),
-          "periodos.mesAno": { $in: mesesDoExtrato },
+      // Criamos um Set com hashes de todas as transações que JÁ EXISTEM no banco (para busca rápida)
+      const chavesExistentes = new Set();
+      periodosDoBanco.forEach((p) => {
+        (p.transacoes || []).forEach((t) => {
+          const dataDesc = descriptografar(t.data);
+          const descDesc = descriptografar(t.descricao);
+          const valorDesc = descriptografar(t.valor);
+          // Geramos uma assinatura única baseada em texto limpo para cada transação existente
+          chavesExistentes.add(`${dataDesc}-${descDesc}-${valorDesc}`);
+        });
+      });
+
+      let houveNovasTransacoes = false;
+
+      // 2. Itera sobre os períodos retornados pelo Gemini
+      (resposta.periodos || []).forEach((periodoNovo) => {
+        // Encontra se já existe um objeto para esse mesmo mês/ano no banco
+        let periodoExistenteNoBanco = periodosDoBanco.find(
+          (p) => p.mesAno === periodoNovo.mesAno
+        );
+
+        // Filtra apenas as transações enviadas agora que NÃO existem no banco
+        const transacoesIneditas = (periodoNovo.transacoes || []).filter((t) => {
+          const chaveNova = `${t.data}-${t.descricao}-${t.valor}`;
+          return !chavesExistentes.has(chaveNova);
         });
 
+        if (transacoesIneditas.length > 0) {
+          houveNovasTransacoes = true;
 
-        if (periodoExistente) {
-          res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-          return res.status(400).json({
-            status: "Erro",
-            message: `Você já possui dados salvos para o período de: ${mesesDoExtrato.join(", ")}. Envie um mês diferente.`,
-          });
-        }
-      }
-
-
-      const periodosCriptografados = (resposta.periodos || []).map(
-        (periodo) => ({
-          ...periodo,
-          transacoes: (periodo.transacoes || []).map((t) => ({
+          // Criptografa individualmente apenas as transações inéditas
+          const transacoesCriptografadas = transacoesIneditas.map((t) => ({
             ...t,
             data: criptografar(t.data),
             descricao: criptografar(t.descricao),
             valor: criptografar(t.valor),
             tipo: criptografar(t.tipo),
             categoria: criptografar(t.categoria),
-          })),
-        }),
-      );
+          }));
 
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(id) },
-        {
-          $push: {
-            periodos: {
-              $each: periodosCriptografados,
+          if (periodoExistenteNoBanco) {
+            // 🎯 SE O OBJETO DO MÊS JÁ EXISTE: Injeta as transações inéditas dentro dele!
+            if (!periodoExistenteNoBanco.transacoes) {
+              periodoExistenteNoBanco.transacoes = [];
+            }
+            periodoExistenteNoBanco.transacoes.push(...transacoesCriptografadas);
+          } else {
+            // 🌟 SE O MÊS É TOTALMENTE NOVO: Cria um novo objeto de período no array
+            periodosDoBanco.push({
+              ...periodoNovo,
+              transacoes: transacoesCriptografadas,
+            });
+          }
+        }
+      });
+
+      // 3. Atualiza o banco de dados se houver pelo menos uma linha nova encontrada
+      if (houveNovasTransacoes) {
+        await db.collection("users").updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              periodos: periodosDoBanco, // Subescreve o array com a versão unificada e limpa
             },
-          },
-        },
-      );
+          }
+        );
+      } else {
+        // Se todas as transações do PDF já constavam no banco
+        res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+        return res.status(400).json({
+          status: "Erro",
+          message: "Todas as transações deste arquivo já foram importadas anteriormente.",
+        });
+      }
+
+      // =========================================================================
 
       res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(200).json({
         status: "Sucesso",
-        message: "Arquivo processado e salvo no banco com segurança!",
+        message: "Arquivo processado. Novos registros mesclados com sucesso!",
         resposta: resposta, 
       });
     } catch (e) {
@@ -139,7 +181,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- MÉTODO GET: Busca e Análise ---
+  // --- MÉTODO GET: Busca e Análise (Inalterado) ---
   if (req.method === "GET") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
