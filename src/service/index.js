@@ -7,7 +7,7 @@ const ai = new GoogleGenAI({
 });
 
 // ======================================================
-// GERAÇÃO DINÂMICA DO PROMPT (OTIMIZADO PARA CATEGORIZAÇÃO)
+// GERAÇÃO DINÂMICA DO PROMPT
 // ======================================================
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
   return `
@@ -32,7 +32,8 @@ Extraia TODAS as transações financeiras presentes no texto acima e classifique
 
 ## REGRAS DE CATEGORIZAÇÃO (CRÍTICO)
 
-Você deve usar o seu conhecimento de mercado para inferir a categoria correta com base no nome do estabelecimento (comerciante). NÃO classifique tudo como "outros" por preciosismo ou preguiça.
+Você deve usar o seu conhecimento de mercado para inferir a categoria correta com base no nome do estabelecimento (comerciante).
+SE VOCÊ NÃO RECONHECER O NOME DO ESTABELECIMENTO, USE A FERRAMENTA DE BUSCA DO GOOGLE (GOOGLE SEARCH) QUE ESTÁ ATIVADA PARA PESQUISAR O RAMO DE ATIVIDADE DELE.
 
 Guia de correspondência para ajudar sua inferência de contexto:
 - "supermercado": Carrefour, Pão de Açúcar, Extra, Assaí, Atacadão, Zona Sul, Mundial, mercado de bairro, mercearia, hortifruti, sacolão, padaria.
@@ -43,7 +44,7 @@ Guia de correspondência para ajudar sua inferência de contexto:
 - "internet": Claro, Vivo, Tim, Net, Oi, provedores locais de banda larga.
 - "streaming" / "assinaturas": Netflix, Spotify, Amazon Prime, Disney+, Globoplay, Deezer, Apple, Google, Crunchyroll, assinaturas de jornais/softwares.
 
-SÓ use a categoria "outros" se o nome do estabelecimento for um código estritamente incompreensível ou se for absolutamente impossível determinar o ramo do comércio após tentar correlacionar o nome com marcas conhecidas.
+SÓ use a categoria "outros" se mesmo após a pesquisa no Google você não conseguir determinar o ramo do comércio de forma alguma.
 
 ## REGRAS GERAIS
 
@@ -140,7 +141,7 @@ function detectarPeriodoPrincipal(texto) {
 }
 
 // ======================================================
-// EXTRAÇÃO DE TRANSAÇÕES
+// EXTRAÇÃO DE TRANSAÇÕES (COM GOOGLE SEARCH ATIVADO)
 // ======================================================
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
@@ -161,13 +162,14 @@ export async function extrairInformacoes(pdfBuffer, senha) {
   console.log(textoDoExtrato.substring(0, 500));
   console.log("================================================================");
 
-  // GERA O PROMPT COM O DICIONÁRIO DE CORRESPONDÊNCIAS E REGRAS INJETADAS
   const promptDinamico = gerarPrompt(textoDoExtrato, periodoPrincipal);
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite",
       config: {
+        // ATIVAÇÃO DA BUSCA WEB DO GOOGLE AQUI
+        tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
