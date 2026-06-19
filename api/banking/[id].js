@@ -5,7 +5,7 @@ import { ObjectId } from "mongodb";
 import {
   extrairInformacoes,
   analiseDeTransacoes,
-} from "../../src/service/index.js"; 
+} from "../../src/service/index.js";
 import formidable from "formidable";
 import { verifyToken } from "../../middleware/authentication.js";
 import fs from "fs";
@@ -17,11 +17,26 @@ export const config = {
   },
 };
 
+// CORREÇÃO 4: Função auxiliar para normalizar o valor em uma chave de deduplicação
+// comparável. Converte para número, fixa 2 casas decimais e transforma em string.
+// Isso resolve o problema de "150" (string) != 150 (number) na comparação.
+function normalizarValorParaChave(valor) {
+  const num = parseFloat(String(valor).replace(",", "."));
+  return isNaN(num) ? "0.00" : num.toFixed(2);
+}
+
+// CORREÇÃO 5: Função auxiliar para montar a chave de deduplicação de forma
+// consistente em todo o código (evita typos e inconsistências).
+function montarChaveTransacao(data, descricao, valor) {
+  const dataStr = String(data || "").trim();
+  const descStr = String(descricao || "").trim().toLowerCase();
+  const valorStr = normalizarValorParaChave(valor);
+  return `${dataStr}|${descStr}|${valorStr}`;
+}
+
 export default async function handler(req, res) {
-  // 1. Executa o middleware de CORS atualizado
   if (cors(req, res)) return;
 
-  // 2. Trava de segurança para requisições Preflight
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
@@ -70,9 +85,9 @@ export default async function handler(req, res) {
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
       // =========================================================================
-      // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE ATUALIZADA (BLINDADA CONTRA UNDEFINED)
+      // ESTRATÉGIA DE MESCLAGEM INTELIGENTE
       // =========================================================================
-      
+
       // 1. Busca o usuário com os períodos atuais salvos
       const usuarioAtual = await db.collection("users").findOne(
         { _id: new ObjectId(id) },
@@ -81,11 +96,13 @@ export default async function handler(req, res) {
 
       let periodosDoBanco = usuarioAtual?.periodos || [];
 
-      // Criamos um Set com assinaturas de texto limpo para evitar conflitos na criptografia
+      // CORREÇÃO 6: Monta o Set de chaves existentes descriptografando os valores
+      // do banco e normalizando com a mesma função usada no PDF, garantindo
+      // que "150" e 150 e "150.00" gerem a mesma chave e sejam reconhecidos como duplicata.
       const chavesExistentes = new Set();
-      
+
       periodosDoBanco.forEach((p) => {
-        // Compatibilidade: se o banco tem período antigo com mes/ano separados, normaliza para o front
+        // Compatibilidade: normaliza registros legados que usavam mes/ano separados
         if (!p.mesAno && p.mes && p.ano) {
           p.mesAno = `${p.mes}/${p.ano}`;
         }
@@ -93,53 +110,55 @@ export default async function handler(req, res) {
         (p.transacoes || []).forEach((t) => {
           const dataDesc = descriptografar(t.data) || "";
           const descDesc = descriptografar(t.descricao) || "";
-          const valorDesc = descriptografar(t.valor) !== undefined ? String(descriptografar(t.valor)) : "";
-          
-          chavesExistentes.add(`${dataDesc}-${descDesc}-${valorDesc}`);
+          const valorDesc = descriptografar(t.valor);
+
+          chavesExistentes.add(montarChaveTransacao(dataDesc, descDesc, valorDesc));
         });
       });
 
       let houveNovasTransacoes = false;
 
-      // 2. Itera sobre os períodos retornados pelo Gemini
+      // 2. Itera sobre os períodos retornados pela IA
       (resposta.periodos || []).forEach((periodoNovo) => {
-        // Fallback: se por acaso a IA mandar separado, monta a string esperado pelo front
-        const stringMesAno = periodoNovo.mesAno || `${periodoNovo.mes}/${periodoNovo.ano}`;
+        // Garante que mesAno sempre existe como string
+        const stringMesAno =
+          periodoNovo.mesAno || `${periodoNovo.mes}/${periodoNovo.ano}`;
         periodoNovo.mesAno = stringMesAno;
 
         // Procura o mês correspondente no histórico (aceita checagem por string ou legado)
         let periodoExistenteNoBanco = periodosDoBanco.find(
-          (p) => p.mesAno === stringMesAno || (p.mes === periodoNovo.mes && p.ano === periodoNovo.ano)
+          (p) =>
+            p.mesAno === stringMesAno ||
+            (p.mes === periodoNovo.mes && p.ano === periodoNovo.ano)
         );
 
-        // Filtra apenas as transações do PDF que não existem no banco
+        // CORREÇÃO 7: Usa a mesma função normalizadora para montar a chave das
+        // transações novas vindas do PDF, garantindo compatibilidade com as chaves
+        // montadas a partir do banco acima.
         const transacoesIneditas = (periodoNovo.transacoes || []).filter((t) => {
-          const chaveNova = `${t.data}-${t.descricao}-${t.valor}`;
+          const chaveNova = montarChaveTransacao(t.data, t.descricao, t.valor);
           return !chavesExistentes.has(chaveNova);
         });
 
         if (transacoesIneditas.length > 0) {
           houveNovasTransacoes = true;
 
-          // Criptografa blindando contra propriedades vazias ou nulas
           const transacoesCriptografadas = transacoesIneditas.map((t) => ({
             data: criptografar(t.data || ""),
             descricao: criptografar(t.descricao || ""),
             valor: criptografar(t.valor !== undefined ? t.valor : 0),
             tipo: criptografar(t.tipo || "debito"),
             categoria: criptografar(t.categoria || "outros"),
-            tags: criptografar(t.tags || "outros"), // 🔒 Agora suporta o campo tags do seu layout
+            tags: criptografar(t.tags || "outros"),
           }));
 
           if (periodoExistenteNoBanco) {
-            // Se o bloco do mês já existe, injeta apenas o que sobrou de inédito dentro dele
             if (!periodoExistenteNoBanco.transacoes) {
               periodoExistenteNoBanco.transacoes = [];
             }
-            periodoExistenteNoBanco.mesAno = stringMesAno; // Garante a consistência do campo
+            periodoExistenteNoBanco.mesAno = stringMesAno;
             periodoExistenteNoBanco.transacoes.push(...transacoesCriptografadas);
           } else {
-            // Se o mês é inédito, adiciona a nova estrutura organizada por mês/ano
             periodosDoBanco.push({
               mesAno: stringMesAno,
               transacoes: transacoesCriptografadas,
@@ -148,13 +167,13 @@ export default async function handler(req, res) {
         }
       });
 
-      // 3. Salva no banco apenas se houver novas atualizações de transações
+      // 3. Salva no banco apenas se houver novas transações
       if (houveNovasTransacoes) {
         await db.collection("users").updateOne(
           { _id: new ObjectId(id) },
           {
             $set: {
-              periodos: periodosDoBanco, 
+              periodos: periodosDoBanco,
             },
           }
         );
@@ -162,7 +181,8 @@ export default async function handler(req, res) {
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
         return res.status(400).json({
           status: "Erro",
-          message: "Todas as transações deste arquivo já foram importadas anteriormente.",
+          message:
+            "Todas as transações deste arquivo já foram importadas anteriormente.",
         });
       }
 
@@ -172,7 +192,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         status: "Sucesso",
         message: "Arquivo processado. Novos registros mesclados com sucesso!",
-        resposta: resposta, 
+        resposta: resposta,
       });
     } catch (e) {
       console.error("Erro interno no upload:", e);
@@ -213,7 +233,7 @@ export default async function handler(req, res) {
         .collection("users")
         .findOne(
           { _id: new ObjectId(id) },
-          { projection: { periodos: 1, _id: 0 } },
+          { projection: { periodos: 1, _id: 0 } }
         );
 
       if (!usuario) {
@@ -231,7 +251,7 @@ export default async function handler(req, res) {
           valor: descriptografar(t.valor),
           tipo: descriptografar(t.tipo),
           categoria: descriptografar(t.categoria),
-          tags: t.tags ? descriptografar(t.tags) : "outros", // Tratamento dinâmico para registros legados que não tinham tags
+          tags: t.tags ? descriptografar(t.tags) : "outros",
         }));
 
       if (transacoesDescriptografadas.length === 0) {
@@ -241,9 +261,7 @@ export default async function handler(req, res) {
         });
       }
 
-      const analiseTexto = await analiseDeTransacoes(
-        transacoesDescriptografadas,
-      );
+      const analiseTexto = await analiseDeTransacoes(transacoesDescriptografadas);
 
       return res.status(200).json({
         analise: analiseTexto,

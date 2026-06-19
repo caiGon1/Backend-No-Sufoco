@@ -72,7 +72,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
               items: {
                 type: "OBJECT",
                 properties: {
-                  mesAno: { type: "STRING" }, 
+                  mesAno: { type: "STRING" },
                   transacoes: {
                     type: "ARRAY",
                     items: {
@@ -80,10 +80,12 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                       properties: {
                         data: { type: "STRING" },
                         descricao: { type: "STRING" },
+                        // CORREÇÃO 2: Valor explicitamente NUMBER para não
+                        // haver ambiguidade de tipo na comparação de duplicatas
                         valor: { type: "NUMBER" },
                         tipo: { type: "STRING", enum: ["credito", "debito"] },
                         categoria: { type: "STRING" },
-                        tags: { type: "STRING" }, // 🎯 CORREÇÃO: Definido o campo que estava faltando no esquema!
+                        tags: { type: "STRING" },
                       },
                       required: [
                         "data",
@@ -108,6 +110,8 @@ export async function extrairInformacoes(pdfBuffer, senha) {
           role: "user",
           parts: [
             {
+              // CORREÇÃO 3: Prompt muito mais explícito sobre separação de períodos.
+              // Exemplos concretos e regras reforçadas para o modelo não misturar meses.
               text: `
 Você é um sistema especialista em análise financeira e conciliação bancária.
 
@@ -118,14 +122,63 @@ CONTEÚDO DO EXTRATO:
 ${textoDoExtrato}
 """
 
-Extraia todas as transações presentes no extrato agrupando-as por seu respectivo período (mês e ano).
+## TAREFA PRINCIPAL
+Extraia TODAS as transações financeiras presentes no texto acima.
 
-REGRAS CRÍTICAS DE NEGÓCIO:
-- Se o extrato contiver registros de meses diferentes, crie objetos separados dentro do array "periodos", um para cada mês correspondente.
-- O campo "mesAno" deve seguir estritamente o formato padrão "M/AAAA" (Exemplo: "1/2026" para Janeiro de 2026, "2/2026" para Fevereiro).
-- Coloque em "categoria" o tipo de gasto (ex: aluguel, luz, água, internet, supermercado, lazer, delivery, cinemas, assinaturas, streaming). Se não souber, use "outros".
-- Coloque em "tags" uma palavra curta que resuma a transação (ex: "salário", "aluguel", "mercado", "outros").
-- Mantenha o valor como um número puro.
+## REGRAS OBRIGATÓRIAS DE AGRUPAMENTO POR PERÍODO
+
+**REGRA 1 — SEPARAÇÃO OBRIGATÓRIA POR MÊS/ANO:**
+Cada mês diferente DEVE ser um objeto separado no array "periodos".
+NÃO agrupe transações de meses diferentes no mesmo objeto.
+
+Exemplo CORRETO de saída quando há transações de jan/2026 e fev/2026:
+{
+  "periodos": [
+    {
+      "mesAno": "1/2026",
+      "transacoes": [ ...apenas transações de janeiro de 2026... ]
+    },
+    {
+      "mesAno": "2/2026",
+      "transacoes": [ ...apenas transações de fevereiro de 2026... ]
+    }
+  ]
+}
+
+Exemplo ERRADO (NÃO FAÇA ISSO — mistura meses):
+{
+  "periodos": [
+    {
+      "mesAno": "1/2026-2/2026",
+      "transacoes": [ ...transações de janeiro E fevereiro misturadas... ]
+    }
+  ]
+}
+
+**REGRA 2 — FORMATO DO CAMPO "mesAno":**
+Use EXATAMENTE o formato "M/AAAA" sem zero à esquerda no mês.
+- Janeiro de 2026 → "1/2026"  ✅
+- Fevereiro de 2026 → "2/2026"  ✅
+- Outubro de 2025 → "10/2025"  ✅
+- "01/2026" ou "01-2026" → ERRADO ❌
+
+Para identificar o mês de cada transação, use a data da própria transação (campo "data").
+
+**REGRA 3 — CAMPO "data":**
+Mantenha o formato original da data como aparece no extrato (ex: "15/01/2026" ou "2026-01-15").
+
+**REGRA 4 — CAMPO "valor":**
+Sempre um número puro sem símbolos. Ex: 150.00, não "R$ 150,00".
+
+**REGRA 5 — CAMPO "categoria":**
+Tipo de gasto: aluguel, luz, água, internet, supermercado, lazer, delivery, streaming, assinaturas, salário, transferência. Se não souber, use "outros".
+
+**REGRA 6 — CAMPO "tags":**
+Uma única palavra que resume a transação. Ex: "salário", "aluguel", "mercado", "netflix", "uber". Se não souber, use "outros".
+
+**REGRA 7 — CAMPO "tipo":**
+"credito" para entradas (recebimentos, depósitos, salário).
+"debito" para saídas (pagamentos, compras, saques).
 `,
             },
           ],
@@ -138,7 +191,7 @@ REGRAS CRÍTICAS DE NEGÓCIO:
   } catch (error) {
     console.error("ERRO GEMINI:", error);
     throw new Error(
-      `Falha ao processar as informações do extrato: ${error.message}`,
+      `Falha ao processar as informações do extrato: ${error.message}`
     );
   }
 }
