@@ -3,32 +3,44 @@
 export default function cors(req, res) {
   const allowedOrigins = [
     "https://no-sufoco.vercel.app",
-    "http://localhost:5173"
+    "http://localhost:5173",
   ];
 
   const origin = req.headers.origin;
 
-  // Permite a origem se estiver na lista
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else if (!origin) {
-    // Opcional: Permite requisições sem origem (ex: Postman ou Server-to-Server)
     res.setHeader("Access-Control-Allow-Origin", "*");
   }
 
-  // Configura os métodos e headers permitidos
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  
-  // IMPORTANTE: Permite que cookies/sessões sejam compartilhados se necessário
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS",
+  );
+
+  // 1. CORREÇÃO AQUI: Adicione o '*' ou explicite os headers que o navegador costuma enviar no upload.
+  // O FormData com Axios costuma exigir que aceitemos quaisquer headers customizados do browser.
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With, Accept",
+  );
+
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  // Se for uma requisição de teste (Preflight), encerra explicitamente com status 204 ou 200
+  // 2. CORREÇÃO CRÍTICA PARA A VERCEL:
+  // Requisições OPTIONS na Vercel precisam responder com status e cabeçalhos imediatamente.
   if (req.method === "OPTIONS") {
-    res.statusCode = 204; // No Content é o padrão ideal para OPTIONS
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": origin || "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, X-Requested-With, Accept",
+      "Access-Control-Allow-Credentials": "true",
+    });
     res.end();
-    return true; // Retorna true informando que a requisição FOI ENCERRADA
+    return true;
   }
 
-  return false; // Retorna false informando que a rota principal pode continuar
+  return false;
 }

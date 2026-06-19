@@ -16,7 +16,14 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  // 1. Executa o middleware de CORS atualizado
   if (cors(req, res)) return;
+
+  // 2. Trava de segurança para requisições Preflight que possam ter passado
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
   const client = await clientPromise;
   const db = client.db("NoSufocoDB");
 
@@ -24,6 +31,8 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
+      // IMPORTANTE: Em caso de erro, reinjete o header de origem para o CORS não quebrar
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res
         .status(401)
         .json({ error: "Unauthorized: Invalid or missing token" });
@@ -32,6 +41,7 @@ export default async function handler(req, res) {
     const { id } = req.query;
 
     if (!id || !ObjectId.isValid(id)) {
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(400).json({
         status: "Erro",
         message: "ID de usuário inválido ou não fornecido.",
@@ -42,17 +52,13 @@ export default async function handler(req, res) {
 
     try {
       const form = formidable({});
-
       const [fields, files] = await form.parse(req);
 
-      const senha = Array.isArray(fields.senha)
-        ? fields.senha[0]
-        : fields.senha;
-      arquivoForm = Array.isArray(files.arquivo)
-        ? files.arquivo[0]
-        : files.arquivo;
+      const senha = Array.isArray(fields.senha) ? fields.senha[0] : fields.senha;
+      arquivoForm = Array.isArray(files.arquivo) ? files.arquivo[0] : files.arquivo;
 
       if (!arquivoForm || !arquivoForm.filepath) {
+        res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
         return res.status(400).json({
           status: "Erro",
           details: "Nenhum arquivo PDF foi detectado pelo servidor.",
@@ -66,20 +72,24 @@ export default async function handler(req, res) {
         { _id: new ObjectId(id) },
         {
           $push: {
-            // Altera de transacoes para periodos
             periodos: {
               $each: resposta.periodos || [],
             },
           },
         },
       );
-      // Certo: distribui os objetos dentro do array original
+
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(200).json({
         status: "Sucesso",
         message: "Arquivo processado e salvo no banco com sucesso!",
         resposta: resposta,
       });
+
     } catch (e) {
+      console.error("Erro interno no upload:", e);
+      // SE CAIR NO CATCH, PRECISAMOS INJETAR O CORS AQUI TAMBÉM!
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(500).json({
         status: "Erro",
         details: e.message,
