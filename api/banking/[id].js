@@ -74,6 +74,39 @@ export default async function handler(req, res) {
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
       // =========================================================================
+      // 🛠️ REAGRUPAMENTO DETERMINÍSTICO (PROTEÇÃO CONTRA AGRUPAMENTO ERRADO DA IA)
+      // =========================================================================
+      // Se a IA tiver "preguiça" e colocar transações de meses diferentes no mesmo grupo,
+      // este bloco JavaScript intercepta, lê a 'data' real de cada transação e separa corretamente.
+      
+      const todasTransacoes = (resposta.periodos || []).flatMap(p => p.transacoes || []);
+      const periodosCorrigidosMap = {};
+
+      todasTransacoes.forEach(t => {
+        let mesAnoStr = "0/0000"; // Fallback para datas mal formatadas
+
+        if (t.data) {
+          // Captura formatos DD/MM/YYYY ou YYYY-MM-DD
+          const matchBR = t.data.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          const matchUS = t.data.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+
+          if (matchBR) {
+            mesAnoStr = `${parseInt(matchBR[2], 10)}/${matchBR[3]}`; // Ex: "5/2026"
+          } else if (matchUS) {
+            mesAnoStr = `${parseInt(matchUS[2], 10)}/${matchUS[1]}`; // Ex: "5/2026"
+          }
+        }
+
+        if (!periodosCorrigidosMap[mesAnoStr]) {
+          periodosCorrigidosMap[mesAnoStr] = { mesAno: mesAnoStr, transacoes: [] };
+        }
+        periodosCorrigidosMap[mesAnoStr].transacoes.push(t);
+      });
+
+      // Substitui a estrutura potencialmente agrupada incorretamente pela corrigida matematicamente
+      resposta.periodos = Object.values(periodosCorrigidosMap);
+
+      // =========================================================================
       // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE ATUALIZADA (BLINDADA CONTRA CONFLITO DE MESES)
       // =========================================================================
 
@@ -88,7 +121,7 @@ export default async function handler(req, res) {
       const chavesExistentes = new Set();
 
       periodosDoBanco.forEach((p) => {
-        // Compatibilidade: se o banco tem período antigo com mes/ano separados, normaliza para o front
+        // Compatibilidade: se o banco tem período antigo com mes/ano separados, normaliza para o formato string
         if (!p.mesAno && p.mes && p.ano) {
           p.mesAno = `${p.mes}/${p.ano}`;
         }
@@ -103,33 +136,27 @@ export default async function handler(req, res) {
               ? String(descriptografar(t.valor))
               : "";
 
-          // 🔒 ALTERAÇÃO: Vincula a chave estritamente ao período dela.
-          // Isso garante que se 'maio' foi parar erroneamente em 'junho' no banco por bugs passados,
-          // o arquivo novo que processa o mês correto de 'maio' ainda consiga inserir seus registros normalmente.
+          // Vincula a chave estritamente ao período dela.
           chavesExistentes.add(`${periodoChave}-${dataDesc}-${descDesc}-${valorDesc}`);
         });
       });
 
       let houveNovasTransacoes = false;
 
-      // 2. Itera sobre os períodos retornados pelo Gemini
-      (resposta.periodos || []).forEach((periodoNovo) => {
-        // Fallback: se por acaso a IA mandar separado, monta a string esperada pelo front
-        const stringMesAno =
-          periodoNovo.mesAno || `${periodoNovo.mes}/${periodoNovo.ano}`;
-        periodoNovo.mesAno = stringMesAno;
+      // 2. Itera sobre os períodos corrigidos e estruturados pelo JavaScript
+      resposta.periodos.forEach((periodoNovo) => {
+        const stringMesAno = periodoNovo.mesAno;
 
-        // Procura o mês correspondente no histórico (aceita checagem por string ou legado)
+        // Procura o mês correspondente no histórico do banco
         let periodoExistenteNoBanco = periodosDoBanco.find(
           (p) =>
             p.mesAno === stringMesAno ||
-            (p.mes === periodoNovo.mes && p.ano === periodoNovo.ano),
+            (p.mes === parseInt(stringMesAno.split('/')[0]) && p.ano === parseInt(stringMesAno.split('/')[1])),
         );
 
         // Filtra apenas as transações do PDF que não existem NESTE período específico do banco
         const transacoesIneditas = (periodoNovo.transacoes || []).filter(
           (t) => {
-            // 🔒 ALTERAÇÃO: Valida se a transação já existe dentro deste escopo de mês/ano específico
             const chaveNova = `${stringMesAno}-${t.data}-${t.descricao}-${t.valor}`;
             return !chavesExistentes.has(chaveNova);
           },
@@ -145,7 +172,7 @@ export default async function handler(req, res) {
             valor: criptografar(t.valor !== undefined ? t.valor : 0),
             tipo: criptografar(t.tipo || "debito"),
             categoria: criptografar(t.categoria || "outros"),
-            tags: criptografar(t.tags || "outros"), // 🔒 Suporta o campo tags do seu layout
+            tags: criptografar(t.tags || "outros"), // Suporta o campo tags do seu layout
           }));
 
           if (periodoExistenteNoBanco) {
@@ -167,8 +194,8 @@ export default async function handler(req, res) {
         }
       });
 
-      // Bloco de logs para acompanhamento
-      console.log("===== [DEBUG] PERÍODOS A SALVAR =====");
+      // Bloco de logs para acompanhamento pós-correção no terminal
+      console.log("===== [DEBUG] PERÍODOS ESTRUTURADOS A SALVAR =====");
       periodosDoBanco.forEach((p, i) => {
         console.log(
           `  ${i + 1}: mesAno="${p.mesAno}" | ${p.transacoes?.length} transações`,
@@ -260,7 +287,7 @@ export default async function handler(req, res) {
           valor: descriptografar(t.valor),
           tipo: descriptografar(t.tipo),
           categoria: descriptografar(t.categoria),
-          tags: t.tags ? descriptografar(t.tags) : "outros", // Tratamento dinâmico para registros legados que não tinham tags
+          tags: t.tags ? descriptografar(t.tags) : "outros",
         }));
 
       if (transacoesDescriptografadas.length === 0) {
