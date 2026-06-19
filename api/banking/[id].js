@@ -55,12 +55,8 @@ export default async function handler(req, res) {
       const form = formidable({});
       const [fields, files] = await form.parse(req);
 
-      const senha = Array.isArray(fields.senha)
-        ? fields.senha[0]
-        : fields.senha;
-      arquivoForm = Array.isArray(files.arquivo)
-        ? files.arquivo[0]
-        : files.arquivo;
+      const senha = Array.isArray(fields.senha) ? fields.senha[0] : fields.senha;
+      arquivoForm = Array.isArray(files.arquivo) ? files.arquivo[0] : files.arquivo;
 
       if (!arquivoForm || !arquivoForm.filepath) {
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
@@ -73,7 +69,27 @@ export default async function handler(req, res) {
       const pdfBuffer = fs.readFileSync(arquivoForm.filepath);
       const resposta = await extrairInformacoes(pdfBuffer, senha);
 
-      // ATUALIZAÇÃO SEGURA: Criptografa dados sensíveis antes de salvar no banco
+
+      const mesesDoExtrato = (resposta.periodos || []).map((p) => p.mesAno); // Ex: ["05/2026", "06/2026"]
+
+      if (mesesDoExtrato.length > 0) {
+        // 2. Procura no banco se este usuário específico já possui algum desses meses salvos
+        const periodoExistente = await db.collection("users").findOne({
+          _id: new ObjectId(id),
+          "periodos.mesAno": { $in: mesesDoExtrato },
+        });
+
+
+        if (periodoExistente) {
+          res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+          return res.status(400).json({
+            status: "Erro",
+            message: `Você já possui dados salvos para o período de: ${mesesDoExtrato.join(", ")}. Envie um mês diferente.`,
+          });
+        }
+      }
+
+
       const periodosCriptografados = (resposta.periodos || []).map(
         (periodo) => ({
           ...periodo,
@@ -103,7 +119,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         status: "Sucesso",
         message: "Arquivo processado e salvo no banco com segurança!",
-        resposta: resposta, // O front ainda recebe os dados limpos gerados na hora
+        resposta: resposta, 
       });
     } catch (e) {
       console.error("Erro interno no upload:", e);
@@ -140,7 +156,6 @@ export default async function handler(req, res) {
     }
 
     try {
-      // ATUALIZAÇÃO: Busca o campo correto 'periodos' em vez de 'transacoes'
       const usuario = await db
         .collection("users")
         .findOne(
@@ -154,7 +169,6 @@ export default async function handler(req, res) {
           .json({ status: "Erro", message: "Usuário não encontrado." });
       }
 
-      // ATUALIZAÇÃO SEGURA: Achata e descriptografa os dados para mandar à IA limpos
       const transacoesDescriptografadas = (usuario.periodos || [])
         .flatMap((p) => p.transacoes || [])
         .map((t) => ({
@@ -173,7 +187,6 @@ export default async function handler(req, res) {
         });
       }
 
-      // Envia os dados descriptografados para a inteligência artificial analisar
       const analiseTexto = await analiseDeTransacoes(
         transacoesDescriptografadas,
       );
