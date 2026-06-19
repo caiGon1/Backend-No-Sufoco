@@ -35,7 +35,7 @@ Você tem TOTAL LIBERDADE para criar e definir a "categoria" de cada transação
 
 Exemplos de como você deve pensar:
 - "CIA MEGA FITNESS" -> categoria: "academia" ou "saúde"
-- "EBENEZER EVANGELICA" -> categoria: "doação" ou "religião"
+- "EBENEZER EVANGELICA" -> categoria: "compras" ou "religião"
 - "PERFUMARIA PRINCESA" ou "NATURA PAY" -> categoria: "beleza" ou "cosméticos"
 - "CAEDU ARICANDUVA" -> categoria: "vestuário" ou "roupas"
 - "MP*MELIMAIS" -> categoria: "assinaturas" ou "serviços"
