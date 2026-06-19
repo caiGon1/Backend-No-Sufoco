@@ -184,6 +184,70 @@ Uma única palavra que resume a transação. Ex: "salário", "aluguel", "mercado
 **REGRA 7 — CAMPO "tipo":**
 "credito" para entradas (recebimentos, depósitos, salário).
 "debito" para saídas (pagamentos, compras, saques).
+
+**REGRA 8 — IDENTIFICAÇÃO DE PARCELAMENTOS (OBRIGATÓRIA)**
+**REGRA 8 — COMPRAS PARCELADAS DEVEM PERTENCER AO PERÍODO DA FATURA**
+
+Extratos de cartão frequentemente exibem:
+
+* a data original da compra
+* junto com a parcela atual
+
+Exemplo:
+
+```json id="n7y2jq"
+{
+  "descricao": "MAGAZINE LUIZA 03/10",
+  "data": "15/01/2026"
+}
+```
+
+Mesmo que a data exibida seja "15/01/2026", essa transação pode estar presente em uma fatura de MAIO/2026.
+
+NESTE CASO:
+
+* considere o período vigente da FATURA
+* NÃO a data original da compra
+
+IMPORTANTE:
+Compras parceladas DEVEM ser agrupadas no mesmo "mesAno" correspondente ao período atual do extrato/fatura.
+
+Exemplo:
+Se o extrato pertence à fatura de maio de 2026:
+
+```json id="z0a9dg"
+{
+  "mesAno": "5/2026"
+}
+```
+
+Então TODAS as parcelas presentes nessa fatura devem pertencer a:
+
+```json id="6ux7hj"
+{
+  "mesAno": "5/2026"
+}
+```
+
+mesmo que a data textual da linha mostre janeiro, fevereiro ou março.
+
+Sinais de parcelamento:
+
+* "1/10"
+* "2/12"
+* "03/08"
+* "PARC 4/6"
+* "PARCELA 5/10"
+* "PX 2/5"
+
+Quando identificar parcelamento:
+
+* priorize o período vigente da FATURA
+* NÃO use a data original da compra para definir o "mesAno"
+* mantenha a transação dentro do mês atual do extrato
+
+Nunca distribua parcelas em meses antigos usando a data original da compra.
+
 `,
             },
           ],
