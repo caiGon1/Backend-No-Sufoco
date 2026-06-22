@@ -142,7 +142,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-2.5-flash",
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -249,7 +249,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 export async function analiseDeTransacoes(transacoes) {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-2.5-flash",
       contents: [
         {
           role: "user",
