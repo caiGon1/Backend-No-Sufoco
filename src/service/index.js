@@ -26,14 +26,14 @@ PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 - NÃO invente nem infira datas. Se não houver data clara, use null.
 - Formato obrigatório de retorno: DD/MM/AAAA. Como o extrato costuma omitir o ano nas transações, use o ano e o mês do PERÍODO PRINCIPAL ("${periodoPrincipal}") para compor a resposta, tratando o primeiro número sempre como o DIA.
 
-## REGRAS DE PARCELAS (CRÍTICO)
+## REGRAS DE PARCELAS 
 "eParcela" só é TRUE se houver um padrão EXPLÍCITO como:
   ✅ "01/12", "Parc 2/6", "3 de 10", "1/3"
 
 "eParcela" é SEMPRE FALSE nos casos abaixo:
   ❌ Número isolado na descrição (ex: "POSTO 476", "LOJA 22")
   ❌ Quando os números coincidem com a data da transação (ex: "COMPRA 15/06" numa transação do dia 15/06)
-  ❌ Qualquer dúvida — na dúvida, é FALSE
+  ❌ É um valor muito baixo, ao não ser se explicitamente dito na fatura/extrato.
 
 ## REGRAS DE CATEGORIZAÇÃO
 Você tem TOTAL LIBERDADE para criar e definir a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "beleza", "vestuario", "supermercado"). Use letras minúsculas e sem acentos. SÓ use a categoria "outros" em último caso.
@@ -42,6 +42,7 @@ Você tem TOTAL LIBERDADE para criar e definir a "categoria" de cada transação
 - NÃO invente transações. Se o bloco não tiver transações claras, retorne array vazio.
 - "valor" deve ser sempre POSITIVO. Use o campo "tipo" para indicar débito ou crédito.
 - "categoria": letra minúscula, sem acento. Use "outros" APENAS se nenhuma categoria fizer sentido.
+- Coloque o número da parcela atual em "parcelaAtual" e o número total de parcelas em "parcelaFinal" caso "eParcela" seja TRUE
 `;
 }
 
@@ -356,7 +357,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 export async function analiseDeTransacoes(transacoes) {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.1-flash-lite",
       contents: [
         {
           role: "user",
