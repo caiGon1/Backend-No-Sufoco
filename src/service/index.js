@@ -143,7 +143,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       const promptDinamico = gerarPrompt(bloco, periodoFinal);
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash",
         config: {
           responseMimeType: "application/json",
           temperature: 0.0,
