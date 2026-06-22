@@ -238,12 +238,13 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   try {
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
-    console.log(textoDoExtrato);
+    
   } catch (error) {
     throw new Error(error.message);
   }
 
   const periodoFinal = detectarPeriodoPrincipal(textoDoExtrato);
+  console.log(textoDoExtrato);
   console.log(`[Detector] Período unificado identificado: ${periodoFinal}`);
 
   const blocosDeTexto = quebrarTextoEmBlocos(textoDoExtrato, 120);
