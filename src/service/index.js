@@ -7,11 +7,9 @@ const ai = new GoogleGenAI({
 });
 
 // ======================================================
-// GERAÇÃO DINÂMICA DO PROMPT (IGNORANDO COLUNA DE PORTADOR)
+// GERAÇÃO DINÂMICA DO PROMPT (COM REGRAS DE LAYOUT)
 // ======================================================
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
-  const anoTarget = periodoPrincipal.split("/")[1] || "2026";
-
   return `
 Você é um sistema especialista em conciliação bancária de ALTA PRECISÃO.
 Extraia APENAS as transações presentes LITERALMENTE no texto abaixo.
@@ -21,36 +19,39 @@ CONTEÚDO DO EXTRATO:
 ${textoDoExtrato}
 """
 
-ANO DA FATURA: "${anoTarget}"
+PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 
 ## REGRA DE ORIENTAÇÃO DE LAYOUT (CRÍTICO)
-O extrato possui uma coluna inicial opcional (valores como 1, 2, 3...) que indica o número do portador/cartão. 
-A estrutura da linha lida da esquerda para a direita segue esta ordem:
-\`[NÚMERO DO PORTADOR (OPCIONAL)] [DATA DA COMPRA (DD/MM)] [DESCRIÇÃO] [FRAÇÃO DA PARCELA (OPCIONAL)] [VALOR]\`
+O texto do extrato foi extraído de uma tabela linha por linha. Cada linha segue rigidamente a ordem de colunas da esquerda para a direita:
+\`[DATA DA TRANSAÇÃO] [DESCRIÇÃO DO ESTABELECIMENTO] [FRAÇÃO DA PARCELA (Se houver)] [VALOR]\`
 
 Exemplos de interpretação correta:
-- "3   03/03 EBENEZER EVANGELICA MU   02/02   134,45"
-  -> O "3" isolado no início é apenas o identificador do portador. IGNORE-O COMPLETAMENTE.
-  -> A primeira data ("03/03") é a DATA real da compra.
-  -> A segunda fração ("02/02") após o texto é a PARCELA (atual 2, total 2).
+- "04/02 EBENEZER EVANGELICA MU 03/03 68,64"
+  -> Primeira data ("04/02") é a DATA da transação.
+  -> Texto do meio ("EBENEZER EVANGELICA MU") é a DESCRIÇÃO.
+  -> Segunda fração ("03/03") que vem após o texto é a PARCELA (parcelaAtual: 3, parcelaFinal: 3).
 
-- "3   07/04 AGITSACADEMIA   209,90"
-  -> O "3" no início é o identificador do portador. IGNORE-O COMPLETAMENTE.
-  -> A data da compra é "07/04".
-  -> Como NÃO há fração "XX/XX" antes do valor, essa compra NÃO é parcelada ("eParcela" é FALSE). NUNCA use o número do portador como parcela.
+- "03/03 PERFUMARIA PRINCESA 02/02 69,25"
+  -> Primeira data ("03/03") é a DATA da transação.
+  -> Segunda fração ("02/02") após o texto é a PARCELA (parcelaAtual: 2, parcelaFinal: 2).
 
 ## REGRAS DE DATA
-- Identifique a data no formato DD/MM localizada logo após o número do portador (se houver).
-- Complete o ano usando o ano da fatura: "${anoTarget}".
-- Retorne no formato correto: DD/MM/AAAA.
+- Use EXATAMENTE a primeira data que aparece no início da linha da transação.
+- Formato obrigatório de retorno: DD/MM/AAAA. Use o ano e o mês do PERÍODO PRINCIPAL ("${periodoPrincipal}") para compor a resposta.
 
 ## REGRAS DE PARCELAS
 No objeto "parcela":
-- "eParcela": Será TRUE apenas se houver uma fração explícita no formato XX/XX posicionada à DIREITA do texto descritivo (perto do valor).
-- Se a linha não contiver essa fração no final, "eParcela" é SEMPRE FALSE e os campos de número devem ser desconsiderados.
+- "eParcela": Será TRUE sempre que houver uma segunda fração/padrão identificável após a descrição (ex: "04/12", "03/03", "02/02", "01/02").
+- "parcelaAtual": O primeiro número dessa segunda fração.
+- "parcelaFinal": O segundo número dessa segunda fração.
+- Se a linha contiver apenas UMA data/fração (ex: "25/04 LOJA X 40,00"), "eParcela" é SEMPRE FALSE.
 
 ## REGRAS DE CATEGORIZAÇÃO
 Defina a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "vestuario", "supermercado"). Use letras minúsculas e sem acentos.
+
+## REGRAS GERAIS
+- "valor": Deve ser sempre POSITIVO. Use o campo "tipo" para indicar débito ou crédito.
+- Não invente dados. Se não houver transações claras, retorne um array vazio.
 `;
 }
 
@@ -218,7 +219,7 @@ async function chamarComRetry(fn, tentativas = 3, delayBase = 1500) {
     } catch (err) {
       const mensagem = err?.message || "";
       const e503 = mensagem.includes("503") || err?.status === 503;
-      if (e503 && i < tentatives - 1) {
+      if (e503 && i < tentativas - 1) {
         const espera = delayBase * (i + 1);
         console.warn(`[Retry ${i + 1}/${tentativas - 1}] 503 detectado, aguardando ${espera}ms...`);
         await new Promise((r) => setTimeout(r, espera));
@@ -237,12 +238,13 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   try {
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
+    
   } catch (error) {
     throw new Error(error.message);
   }
 
   const periodoFinal = detectarPeriodoPrincipal(textoDoExtrato);
-  const anoTarget = periodoFinal.split("/")[1];
+  console.log(textoDoExtrato);
   console.log(`[Detector] Período unificado identificado: ${periodoFinal}`);
 
   const blocosDeTexto = quebrarTextoEmBlocos(textoDoExtrato, 120);
@@ -269,25 +271,18 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                   items: {
                     type: "OBJECT",
                     properties: {
-                      data: { 
-                        type: "STRING", 
-                        description: "A data real no formato DD/MM encontrada logo após o número do portador." 
-                      },
-                      descricao: { 
-                        type: "STRING", 
-                        description: "O nome do estabelecimento limpo. Remova números isolados do início e frações do fim." 
-                      },
+                      data: { type: "STRING" },
+                      descricao: { type: "STRING" },
                       valor: { type: "NUMBER" },
                       tipo: { type: "STRING", enum: ["credito", "debito"] },
                       categoria: { type: "STRING" },
                       tags: { type: "STRING" },
                       parcela: {
                         type: "OBJECT",
-                        description: "Fração identificada estritamente no final da descrição da compra (antes do valor).",
                         properties: {
-                          eParcela: { type: "BOOLEAN", description: "True apenas se houver fração de parcelas clara no fim da linha." },
-                          parcelaAtual: { type: "NUMBER", description: "O primeiro número da fração de parcelas." },
-                          parcelaFinal: { type: "NUMBER", description: "O segundo número da fração de parcelas." },
+                          eParcela: { type: "BOOLEAN" },
+                          parcelaAtual: { type: "NUMBER" },
+                          parcelaFinal: { type: "NUMBER" },
                         },
                         required: ["eParcela"],
                       },
@@ -314,6 +309,9 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       }
     }
 
+    const [mesTarget, anoTarget] = periodoFinal.split("/");
+    const mesFormatado = mesTarget.padStart(2, "0");
+
     const transacoesHigienizadas = transacoesAcumuladas.map(t => {
       const transacaoLimpa = higienizarParcela(t);
 
@@ -322,8 +320,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       const partesDaData = transacaoLimpa.data.split("/");
       if (partesDaData.length >= 2) {
         const dia = partesDaData[0].padStart(2, "0");
-        const mes = partesDaData[1].padStart(2, "0");
-        transacaoLimpa.data = `${dia}/${mes}/${anoTarget}`;
+        transacaoLimpa.data = `${dia}/${mesFormatado}/${anoTarget}`;
       }
 
       return transacaoLimpa;
@@ -368,7 +365,17 @@ TRANSAÇÕES:
 ${JSON.stringify(transacoes, null, 2)}
 """
 
-Analise as transações acima e forneça um resumo financeiro curto.
+Analise as transações acima e forneça:
+- Um resumo financeiro curto
+- Possíveis excessos de gastos
+- Dicas simples de melhoria financeira
+
+IMPORTANTE:
+- Resposta corta
+- Linguagem simples
+- Sem markdown
+- Sem listas complexas
+- Fácil de entender
               `,
             },
           ],
