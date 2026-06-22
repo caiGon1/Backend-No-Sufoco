@@ -108,15 +108,13 @@ function detectarPeriodoPrincipal(texto) {
 
   for (const [periodo, quantidade] of Object.entries(contador)) {
     if (quantidade > maior) {
-      maver = quantidade;
-      maior = quantidade;
+      maior = quantidade; // Corretinho, apenas atualizando o maior valor
       periodoPrincipal = periodo;
     }
   }
 
   return periodoPrincipal;
 }
-
 // ======================================================
 // EXTRAÇÃO DE TRANSAÇÕES (MÉTODO PARALELO EM BLOCOS)
 // ======================================================
