@@ -7,34 +7,41 @@ const ai = new GoogleGenAI({
 });
 
 // ======================================================
-// GERAÇÃO DINÂMICA DO PROMPT (RECALIBRADO PARA EVITAR ERROS)
+// GERAÇÃO DINÂMICA DO PROMPT (COM REGRAS EXPLÍCITAS)
 // ======================================================
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
   return `
-Você é um sistema especialista em análise financeira e conciliação bancária de alta precisão.
-
-Abaixo está o texto extraído diretamente de uma fatia de um extrato bancário.
+Você é um sistema especialista em conciliação bancária de ALTA PRECISÃO.
+Extraia APENAS as transações presentes LITERALMENTE no texto abaixo.
 
 CONTEÚDO DO EXTRATO:
 """
 ${textoDoExtrato}
 """
 
-PERÍODO PRINCIPAL DA FATURA/EXTRATO:
-"${periodoPrincipal}"
+PERÍODO PRINCIPAL: "${periodoPrincipal}"
 
-## TAREFA PRINCIPAL
-Extraia TODAS as transações financeiras presentes no texto acima.
+## REGRAS DE DATA (CRÍTICO)
+- Use EXATAMENTE a data que aparece ao lado da transação no extrato.
+- NÃO invente nem infira datas. Se não houver data clara, use null.
+- Formato obrigatório: DD/MM/AAAA. Se o ano não aparecer, use o ano do PERÍODO PRINCIPAL.
+
+## REGRAS DE PARCELAS (CRÍTICO)
+"eParcela" só é TRUE se houver um padrão EXPLÍCITO como:
+  ✅ "01/12", "Parc 2/6", "3 de 10", "1/3"
+
+"eParcela" é SEMPRE FALSE nos casos abaixo:
+  ❌ Número isolado na descrição (ex: "POSTO 476", "LOJA 22")
+  ❌ Quando os números coincidem com a data da transação (ex: "COMPRA 15/06" numa transação do dia 15/06)
+  ❌ Qualquer dúvida — na dúvida, é FALSE
 
 ## REGRAS DE CATEGORIZAÇÃO
 Você tem TOTAL LIBERDADE para criar e definir a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "beleza", "vestuario", "supermercado"). Use letras minúsculas e sem acentos. SÓ use a categoria "outros" em último caso.
 
-## REGRAS DE PARCELAS (CRÍTICO)
-- Analise a descrição da transação. Se houver um padrão de divisão numérico explícito indicando parcelamento (exemplos: "01/12", "Parc 2", "5 de 10", "1/3"), defina "eParcela" como true e extraia "parcelaAtual" e "parcelaFinal".
-- Se os números identificados forem IGUAIS à data da própria transação (ex: texto diz "POSTO 22/06" e a data da compra é 22 de junho), isso NÃO é uma parcela, é uma data. Defina "eParcela" como false.
-- Caso não haja nenhuma menção clara a parcelamento, defina "eParcela" como false.
-
-Retorne um objeto JSON contendo um array de "transacoes".
+## REGRAS GERAIS
+- NÃO invente transações. Se o bloco não tiver transações claras, retorne array vazio.
+- "valor" deve ser sempre POSITIVO. Use o campo "tipo" para indicar débito ou crédito.
+- "categoria": letra minúscula, sem acento. Use "outros" APENAS se nenhuma categoria fizer sentido.
 `;
 }
 
@@ -54,7 +61,7 @@ function quebrarTextoEmBlocos(texto, linhasPorBloco = 45) {
 }
 
 // ======================================================
-// EXTRAÇÃO DE TEXTO DO PDF
+// EXTRAÇÃO DE TEXTO DO PDF (COM DETECÇÃO DE QUEBRA DE LINHA)
 // ======================================================
 async function extrairTextoDePDF(pdfBuffer, senha) {
   try {
@@ -72,12 +79,28 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
       const page = await pdf.getPage(paginaAtual);
       const textContent = await page.getTextContent();
 
-      const textosDaPagina = textContent.items.map((item) => item.str);
+      // Preserva a estrutura linha a linha detectando quebras pelo eixo X
+      const linhasDaPagina = [];
+      let linhaAtual = [];
+      let xAnterior = null;
 
-      textoCompleto += textosDaPagina.join(" ") + "\n";
+      for (const item of textContent.items) {
+        const xAtual = Math.round(item.transform[4]);
+        // Se o X "voltou" muito para a esquerda, é uma nova linha
+        if (xAnterior !== null && xAtual < xAnterior - 50) {
+          linhasDaPagina.push(linhaAtual.join(" "));
+          linhaAtual = [];
+        }
+        linhaAtual.push(item.str);
+        xAnterior = xAtual;
+      }
+      // Adiciona a última linha pendente
+      if (linhaAtual.length) linhasDaPagina.push(linhaAtual.join(" "));
+
+      textoCompleto += linhasDaPagina.join("\n") + "\n";
     }
 
-    textoCompleto = textoCompleto.replace(/\s+/g, " ").trim();
+    textoCompleto = textoCompleto.trim();
 
     if (!textoCompleto || textoCompleto.length < 10) {
       throw new Error("Não foi possível extrair conteúdo textual do PDF.");
@@ -108,13 +131,48 @@ function detectarPeriodoPrincipal(texto) {
 
   for (const [periodo, quantidade] of Object.entries(contador)) {
     if (quantidade > maior) {
-      maior = quantidade; // Corretinho, apenas atualizando o maior valor
+      maior = quantidade;
       periodoPrincipal = periodo;
     }
   }
 
   return periodoPrincipal;
 }
+
+// ======================================================
+// FILTRO ROBUSTO DE PARCELAS
+// ======================================================
+function higienizarParcela(t) {
+  let parcela = t.parcela || { eParcela: false };
+
+  if (parcela.eParcela) {
+    const desc = (t.descricao || "").toUpperCase();
+
+    // Busca padrão explícito de fração numérica (ex: 01/12, 3 de 10, Parc 2/6)
+    const padraoParcelaReal = /\b(\d{1,2})[\/\-\s](\d{1,2})\b/.exec(desc);
+
+    if (!padraoParcelaReal) {
+      // Nenhum padrão numérico de fração encontrado → não é parcela
+      parcela = { eParcela: false };
+    } else {
+      const numAtual = parseInt(padraoParcelaReal[1]);
+      const numFinal = parseInt(padraoParcelaReal[2]);
+
+      // Sanity checks: parcela atual <= final, e final > 1
+      if (numAtual > numFinal || numFinal <= 1) {
+        parcela = { eParcela: false };
+      }
+    }
+
+    // Garante que parcelaAtual e parcelaFinal existem se eParcela ainda for true
+    if (parcela.eParcela && (parcela.parcelaAtual == null || parcela.parcelaFinal == null)) {
+      parcela = { eParcela: false };
+    }
+  }
+
+  return { ...t, parcela };
+}
+
 // ======================================================
 // EXTRAÇÃO DE TRANSAÇÕES (MÉTODO SEQUENCIAL COM UNIFICAÇÃO DE PERÍODO)
 // ======================================================
@@ -129,9 +187,9 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   // 1. Detecta o período real do extrato (ex: "5/2026")
   const periodoDetectado = detectarPeriodoPrincipal(textoDoExtrato);
-  const periodoFinal = periodoDetectado;// Fallback seguro para o mês atual
-  
-  // Fatiamento do texto para o Vercel Shield (120 linhas por bloco para fazer poucas chamadas)
+  const periodoFinal = periodoDetectado;
+
+  // Fatiamento do texto (120 linhas por bloco para fazer poucas chamadas)
   const blocosDeTexto = quebrarTextoEmBlocos(textoDoExtrato, 120);
   console.log(`[Vercel Shield] Extrato processado em ${blocosDeTexto.length} bloco(s).`);
 
@@ -182,8 +240,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       });
 
       const resultadoBruto = JSON.parse(response.text.trim());
-      
-      // Joga todas as transações extraídas deste bloco para o nosso array geral
+
       if (resultadoBruto.transacoes && Array.isArray(resultadoBruto.transacoes)) {
         transacoesAcumuladas.push(...resultadoBruto.transacoes);
       }
@@ -193,37 +250,17 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       }
     }
 
-    // 2. Filtro de segurança contra alucinações de parcelas nas transações acumuladas
-    const transacoesHigienizadas = transacoesAcumuladas.map((t) => {
-      let parcelaTratada = t.parcela || { eParcela: false };
+    // 2. Higienização robusta de parcelas
+    const transacoesHigienizadas = transacoesAcumuladas.map(higienizarParcela);
 
-      if (parcelaTratada.eParcela) {
-        const descricao = (t.descricao || "").trim();
-        const dataTransacao = (t.data || "").trim();
-
-        if (descricao.includes(dataTransacao) && !/parc|de/i.test(descricao)) {
-          const textoRemanescente = descricao.replace(dataTransacao, "").trim();
-          if (!/\d+[\-\/\s]\d+/.test(textoRemanescente)) {
-            parcelaTratada = { eParcela: false };
-          }
-        }
-
-        if (parcelaTratada.parcelaAtual === undefined || parcelaTratada.parcelaFinal === undefined) {
-          parcelaTratada = { eParcela: false };
-        }
-      }
-
-      return { ...t, parcela: parcelaTratada };
-    });
-
-    // 3. GARANTIA DE PERÍODO ÚNICO: Envelopa absolutamente tudo no período detectado no início
+    // 3. Envelopa tudo no período detectado
     const estruturaPeriodos = {
       periodos: [
         {
-          mesAno: periodoFinal, // Usa rigorosamente o mesmo M/AAAA para todas as transações
+          mesAno: periodoFinal,
           transacoes: transacoesHigienizadas,
-        }
-      ]
+        },
+      ],
     };
 
     console.log(`[Sucesso] ${transacoesHigienizadas.length} transações consolidadas no período ${periodoFinal}.`);
@@ -267,7 +304,7 @@ IMPORTANTE:
 - Sem markdown
 - Sem listas complexas
 - Fácil de entender
-                `,
+              `,
             },
           ],
         },
