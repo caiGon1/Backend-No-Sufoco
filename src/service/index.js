@@ -55,7 +55,7 @@ REGRA 4: O campo "valor" deve ser número puro sem símbolo monetário.
 REGRA 5: O campo "tags" deve conter apenas uma palavra complementar (ex: "comida", "transporte", "mensalidade").
 REGRA 6: Use "credito" ou "debito".
 REGRA 7: COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
-REGRA 8: Caso identifique uma parcela, coloque o campo "eParcela" como true, caso o contrário, coloque como false.
+REGRA 8: Caso identifique uma parcela, coloque o campo "eParcela" como true, caso o contrário, coloque como false. Caso não tenha certeza de uma parcela, não coloque como true.
 REGRA 9: Caso identifique uma parcela, coloque a parcela atual no campo parcelaAtual e a parcela final em parcelaFinal no objeto parcela. Caso não identifique a parcela, e/ou o campo "eParcela" seja FALSE, omita esses campos.
 
 Retorne SOMENTE JSON válido.
