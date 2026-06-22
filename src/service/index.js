@@ -238,6 +238,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   try {
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
+    console.log(textoDoExtrato);
   } catch (error) {
     throw new Error(error.message);
   }
