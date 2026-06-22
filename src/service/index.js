@@ -116,7 +116,7 @@ function detectarPeriodoPrincipal(texto) {
   return periodoPrincipal;
 }
 // ======================================================
-// EXTRAÇÃO DE TRANSAÇÕES (MÉTODO PARALELO EM BLOCOS)
+// EXTRAÇÃO DE TRANSAÇÕES (MÉTODO SEQUENCIAL COM UNIFICAÇÃO DE PERÍODO)
 // ======================================================
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
@@ -127,23 +127,26 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     throw new Error(error.message);
   }
 
-  const periodoPrincipal = detectarPeriodoPrincipal(textoDoExtrato);
+  // 1. Detecta o período real do extrato (ex: "5/2026")
+  const periodoDetectado = detectarPeriodoPrincipal(textoDoExtrato);
+  const periodoFinal = periodoDetectado || "6/2026"; // Fallback seguro para o mês atual
+  
+  // Fatiamento do texto para o Vercel Shield (120 linhas por bloco para fazer poucas chamadas)
+  const blocosDeTexto = quebrarTextoEmBlocos(textoDoExtrato, 120);
+  console.log(`[Vercel Shield] Extrato processado em ${blocosDeTexto.length} bloco(s).`);
 
-  // Divide o texto extraído para evitar os 10s de Timeout da Vercel
-  const blocosDeTexto = quebrarTextoEmBlocos(textoDoExtrato, 45);
-  console.log(
-    `[Vercel Shield] Extrato fatiado em ${blocosDeTexto.length} blocos.`,
-  );
+  const transacoesAcumuladas = [];
 
   try {
-    // Mapeia cada bloco para rodar em chamadas assíncronas paralelas
-    const promessas = blocosDeTexto.map(async (bloco) => {
-      const promptDinamico = gerarPrompt(bloco, periodoPrincipal);
+    for (let i = 0; i < blocosDeTexto.length; i++) {
+      const bloco = blocosDeTexto[i];
+      const promptDinamico = gerarPrompt(bloco, periodoFinal);
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite", // 🚀 Modelo de última geração integrado
+        model: "gemini-3.1-flash-lite",
         config: {
           responseMimeType: "application/json",
+          temperature: 0.0,
           responseSchema: {
             type: "OBJECT",
             properties: {
@@ -168,15 +171,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                       required: ["eParcela"],
                     },
                   },
-                  required: [
-                    "data",
-                    "descricao",
-                    "valor",
-                    "tipo",
-                    "categoria",
-                    "tags",
-                    "parcela",
-                  ],
+                  required: ["data", "descricao", "valor", "tipo", "categoria", "tags", "parcela"],
                 },
               },
             },
@@ -187,22 +182,25 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       });
 
       const resultadoBruto = JSON.parse(response.text.trim());
-      return resultadoBruto.transacoes || [];
-    });
+      
+      // Joga todas as transações extraídas deste bloco para o nosso array geral
+      if (resultadoBruto.transacoes && Array.isArray(resultadoBruto.transacoes)) {
+        transacoesAcumuladas.push(...resultadoBruto.transacoes);
+      }
 
-    // Executa os blocos simultaneamente
-    const resultadosDosBlocos = await Promise.all(promessas);
-    const transacoesAchatadas = resultadosDosBlocos.flat();
+      if (i < blocosDeTexto.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    }
 
-    // 🛠️ FILTRO DE SEGURANÇA PÓS-IA (Limpa alucinações residuais de parcelas)
-    const transacoesHigienizadas = transacoesAchatadas.map((t) => {
+    // 2. Filtro de segurança contra alucinações de parcelas nas transações acumuladas
+    const transacoesHigienizadas = transacoesAcumuladas.map((t) => {
       let parcelaTratada = t.parcela || { eParcela: false };
 
       if (parcelaTratada.eParcela) {
         const descricao = (t.descricao || "").trim();
         const dataTransacao = (t.data || "").trim();
 
-        // Se a "parcela" encontrada for idêntica à data do registro, invalida
         if (descricao.includes(dataTransacao) && !/parc|de/i.test(descricao)) {
           const textoRemanescente = descricao.replace(dataTransacao, "").trim();
           if (!/\d+[\-\/\s]\d+/.test(textoRemanescente)) {
@@ -210,39 +208,30 @@ export async function extrairInformacoes(pdfBuffer, senha) {
           }
         }
 
-        // Garante a integridade dos campos numéricos
-        if (
-          parcelaTratada.parcelaAtual === undefined ||
-          parcelaTratada.parcelaFinal === undefined
-        ) {
+        if (parcelaTratada.parcelaAtual === undefined || parcelaTratada.parcelaFinal === undefined) {
           parcelaTratada = { eParcela: false };
         }
-      }
-
-      // Se não for parcela legítima, remove os campos extras para seguir o seu Schema original
-      if (!parcelaTratada.eParcela) {
-        parcelaTratada = { eParcela: false };
       }
 
       return { ...t, parcela: parcelaTratada };
     });
 
-    // Organiza as transações no formato estruturado de "periodos" exigido pelo seu Frontend
+    // 3. GARANTIA DE PERÍODO ÚNICO: Envelopa absolutamente tudo no período detectado no início
     const estruturaPeriodos = {
       periodos: [
         {
-          mesAno: periodoPrincipal || "1/2026",
+          mesAno: periodoFinal, // Usa rigorosamente o mesmo M/AAAA para todas as transações
           transacoes: transacoesHigienizadas,
-        },
-      ],
+        }
+      ]
     };
 
+    console.log(`[Sucesso] ${transacoesHigienizadas.length} transações consolidadas no período ${periodoFinal}.`);
     return estruturaPeriodos;
+
   } catch (error) {
-    console.error("ERRO COMPILADO DO BATCH:", error);
-    throw new Error(
-      `Falha ao processar as informações do extrato: ${error.message}`,
-    );
+    console.error("ERRO NO PROCESSAMENTO:", error);
+    throw new Error(`Falha ao processar as informações do extrato: ${error.message}`);
   }
 }
 
