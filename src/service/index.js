@@ -55,11 +55,7 @@ REGRA 4: O campo "valor" deve ser número puro sem símbolo monetário.
 REGRA 5: O campo "tags" deve conter apenas uma palavra complementar (ex: "comida", "transporte", "mensalidade").
 REGRA 6: Use "credito" ou "debito".
 REGRA 7: COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
-REGRA 8: Identificação Inteligente de Parcelas:
-- Analise a descrição da transação. Se houver um padrão de divisão numérico explícito indicando parcelamento (exemplos: "01/12", "Parc 2", "5 de 10", "1/3"), defina "eParcela" como true.
-- Extraia os números correspondentes para "parcelaAtual" e "parcelaFinal".
-- Se os números identificados forem IGUAIS à data da própria transação (ex: texto diz "POSTO 22/06" e a data da compra é 22 de junho), isso NÃO é uma parcela, é uma data. Nesse caso, defina "eParcela" como false.
-- Caso não haja nenhuma menção a parcelamento, defina "eParcela" como false.
+REGRA 8: Caso identifique uma parcela, coloque no objeto "parcela" no campo "eParcela" TRUE, caso não identifique ou fique na dúvida coloque como "FALSE"
 REGRA 9: Caso identifique uma parcela, coloque a parcela atual no campo parcelaAtual e a parcela final em parcelaFinal no objeto parcela. Caso não identifique a parcela, e/ou o campo "eParcela" seja FALSE, omita esses campos.
 
 Retorne SOMENTE JSON válido.
