@@ -60,6 +60,7 @@ REGRA 8: Análise de Parcelas (RIGOROSA):
 - NUNCA confunda datas (ex: "12/04" ou "15/08") ou códigos numéricos do estabelecimento com parcelas. 
 - Na dúvida, se não houver um padrão claro de parcelamento no nome do estabelecimento, defina "eParcela" como false.
 - Se "eParcela" for false, OMITA por completo as chaves "parcelaAtual" e "parcelaFinal" do objeto.
+- Compras como "uber", "ifood", e compras pequenas não são parceladas, por isso coloque como "FALSE" ao não ser se for explicitamente mencionada.
 
 REGRA 9: Caso identifique uma parcela, coloque a parcela atual no campo parcelaAtual e a parcela final em parcelaFinal no objeto parcela. Caso não identifique a parcela, e/ou o campo "eParcela" seja FALSE, omita esses campos.
 
@@ -181,8 +182,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                         },
                         categoria: {
                           type: "STRING",
-                          description:
-                            "Categoria livre gerada dinamicamente com base no estabelecimento (ex: vestuario, academia, beleza, supermercado, religiao).",
+                          description: "Categoria livre gerada dinamicamente com base no estabelecimento (ex: vestuario, academia, beleza, supermercado, religiao).",
                         },
                         tags: {
                           type: "STRING",
@@ -192,22 +192,22 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                           properties: {
                             eParcela: {
                               type: "BOOLEAN",
-                              description:
-                                "OBRIGATÓRIO: Defina como TRUE apenas se houver cobrança parcelada explícita (ex: '01/05' ou 'Parc. 2'). Se o número for apenas uma DATA (ex: '15/06') ou CÓDIGO DOC, defina como FALSE.",
+                              description: "DEFINA COMO TRUE APENAS se a descrição da transação indicar explicitamente uma compra parcelada (ex: Compra X 02/05). Se for uma compra à vista, ou se o número parecer uma data ou código, DEVE SER FALSE."
                             },
                             parcelaAtual: {
                               type: "NUMBER",
-                              description:
-                                "Número da parcela atual. Omitir completamente se eParcela for false.",
+                              description: "O número da parcela atual corrente. Omitir se eParcela for false."
                             },
                             parcelaFinal: {
                               type: "NUMBER",
-                              description:
-                                "Total de parcelas. Omitir completamente se eParcela for false.",
-                            },
+                              description: "O total de parcelas da compra. Omitir se eParcela for false."
+                            }
                           },
-                          required: ["eParcela"],
+                          required: [
+                            "eParcela"
+                          ]
                         },
+
                       },
                       required: [
                         "data",
@@ -216,7 +216,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                         "tipo",
                         "categoria",
                         "tags",
-                        "parcela",
+                        "parcela"
                       ],
                     },
                   },
@@ -251,7 +251,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
   } catch (error) {
     console.error("ERRO GEMINI:", error);
     throw new Error(
-      `Falha ao processar as informações do extrato: ${error.message}`,
+      `Falha ao processar as informações do extrato: ${error.message}`
     );
   }
 }
