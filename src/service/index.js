@@ -129,7 +129,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   // 1. Detecta o período real do extrato (ex: "5/2026")
   const periodoDetectado = detectarPeriodoPrincipal(textoDoExtrato);
-  const periodoFinal = periodoDetectado || "6/2026"; // Fallback seguro para o mês atual
+  const periodoFinal = periodoDetectado;// Fallback seguro para o mês atual
   
   // Fatiamento do texto para o Vercel Shield (120 linhas por bloco para fazer poucas chamadas)
   const blocosDeTexto = quebrarTextoEmBlocos(textoDoExtrato, 120);
@@ -143,7 +143,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       const promptDinamico = gerarPrompt(bloco, periodoFinal);
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.1-flash-lite",
         config: {
           responseMimeType: "application/json",
           temperature: 0.0,
