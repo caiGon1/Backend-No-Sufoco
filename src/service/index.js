@@ -7,7 +7,7 @@ const ai = new GoogleGenAI({
 });
 
 // ======================================================
-// GERAÇÃO DINÂMICA DO PROMPT (COM REGRAS EXPLÍCITAS)
+// GERAÇÃO DINÂMICA DO PROMPT (COM REGRAS DE LAYOUT)
 // ======================================================
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
   return `
@@ -21,29 +21,37 @@ ${textoDoExtrato}
 
 PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 
-## REGRAS DE DATA (CRÍTICO)
-- Use EXATAMENTE a data que aparece ao lado da transação no extrato.
-- NÃO invente nem infira datas. Se não houver data clara, use null.
-- Formato obrigatório de retorno: DD/MM/AAAA. Como o extrato costuma omitir o ano nas transações, use o ano e o mês do PERÍODO PRINCIPAL ("${periodoPrincipal}") para compor a resposta, tratando o primeiro número sempre como o DIA.
+## REGRA DE ORIENTAÇÃO DE LAYOUT (CRÍTICO)
+O texto do extrato foi extraído de uma tabela linha por linha. Cada linha segue rigidamente a ordem de colunas da esquerda para a direita:
+\`[DATA DA TRANSAÇÃO] [DESCRIÇÃO DO ESTABELECIMENTO] [FRAÇÃO DA PARCELA (Se houver)] [VALOR]\`
 
-## REGRAS DE PARCELAS (CRÍTICO)
-Identifique se a transação faz parte de um plano de parcelamento analisando o texto original (padrões como "01/12", "Parc 2/6", "3 de 10", "1/3").
+Exemplos de interpretação correta:
+- "04/02 EBENEZER EVANGELICA MU 03/03 68,64"
+  -> Primeira data ("04/02") é a DATA da transação.
+  -> Texto do meio ("EBENEZER EVANGELICA MU") é a DESCRIÇÃO.
+  -> Segunda fração ("03/03") que vem após o texto é a PARCELA (parcelaAtual: 3, parcelaFinal: 3).
+
+- "03/03 PERFUMARIA PRINCESA 02/02 69,25"
+  -> Primeira data ("03/03") é a DATA da transação.
+  -> Segunda fração ("02/02") após o texto é a PARCELA (parcelaAtual: 2, parcelaFinal: 2).
+
+## REGRAS DE DATA
+- Use EXATAMENTE a primeira data que aparece no início da linha da transação.
+- Formato obrigatório de retorno: DD/MM/AAAA. Use o ano e o mês do PERÍODO PRINCIPAL ("${periodoPrincipal}") para compor a resposta.
+
+## REGRAS DE PARCELAS
 No objeto "parcela":
-- "eParcela": Defina como TRUE apenas se houver uma fração explícita indicando parcelamento.
-- "parcelaAtual": Extraia o número da parcela corrente (o primeiro número da fração).
-- "parcelaFinal": Extraia o número total de parcelas (o segundo número da fração).
-
-Negativação de falsos positivos:
-- "eParcela" é FALSE se for apenas um número isolado na descrição sem contexto de fração (ex: "POSTO 476", "LOJA 22").
-- "eParcela" é FALSE se os números forem idênticos à data do dia corrente (ex: "COMPRA 15/06" no dia 15).
+- "eParcela": Será TRUE sempre que houver uma segunda fração/padrão identificável após a descrição (ex: "04/12", "03/03", "02/02", "01/02").
+- "parcelaAtual": O primeiro número dessa segunda fração.
+- "parcelaFinal": O segundo número dessa segunda fração.
+- Se a linha contiver apenas UMA data/fração (ex: "25/04 LOJA X 40,00"), "eParcela" é SEMPRE FALSE.
 
 ## REGRAS DE CATEGORIZAÇÃO
-Você tem TOTAL LIBERDADE para criar e definir a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "beleza", "vestuario", "supermercado"). Use letras minúsculas e sem acentos. SÓ use a categoria "outros" em último caso.
+Defina a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "vestuario", "supermercado"). Use letras minúsculas e sem acentos.
 
 ## REGRAS GERAIS
-- NÃO invente transações. Se o bloco não tiver transações claras, retorne array vazio.
-- "valor" deve ser sempre POSITIVO. Use o campo "tipo" para indicar débito ou crédito.
-- "categoria": letra minúscula, sem acento. Use "outros" APENAS se nenhuma categoria fizer sentido.
+- "valor": Deve ser sempre POSITIVO. Use o campo "tipo" para indicar débito ou crédito.
+- Não invente dados. Se não houver transações claras, retorne um array vazio.
 `;
 }
 
@@ -63,7 +71,7 @@ function quebrarTextoEmBlocos(texto, linhasPorBloco = 45) {
 }
 
 // ======================================================
-// EXTRAÇÃO DE TEXTO DO PDF (COM DETECÇÃO DE QUEBRA DE LINHA)
+// EXTRAÇÃO DE TEXTO DO PDF
 // ======================================================
 async function extrairTextoDePDF(pdfBuffer, senha) {
   try {
@@ -113,7 +121,7 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
 }
 
 // ======================================================
-// DETECTA PERÍODO PRINCIPAL DA FATURA (INTELIGENTE)
+// DETECTA PERÍODO PRINCIPAL DA FATURA
 // ======================================================
 function detectarPeriodoPrincipal(texto) {
   const mesesEps = {
@@ -179,7 +187,7 @@ function detectarPeriodoPrincipal(texto) {
 }
 
 // ======================================================
-// FILTRO ROBUSTO DE PARCELAS (CORRIGIDO)
+// FILTRO ROBUSTO DE PARCELAS
 // ======================================================
 function higienizarParcela(t) {
   let parcela = { ...t.parcela };
@@ -188,9 +196,7 @@ function higienizarParcela(t) {
     const numAtual = parseInt(parcela.parcelaAtual, 10);
     const numFinal = parseInt(parcela.parcelaFinal, 10);
 
-    // Validação lógica baseada na própria extração estruturada da IA
     if (isNaN(numAtual) || isNaN(numFinal) || numAtual > numFinal || numFinal <= 1) {
-      // Se os números não fizerem sentido, desmarca como parcela
       parcela = { eParcela: false };
     } else {
       parcela.parcelaAtual = numAtual;
@@ -204,7 +210,7 @@ function higienizarParcela(t) {
 }
 
 // ======================================================
-// RETRY COM BACKOFF EXPONENCIAL (PARA ERROS 503)
+// RETRY COM BACKOFF EXPONENCIAL
 // ======================================================
 async function chamarComRetry(fn, tentativas = 3, delayBase = 1500) {
   for (let i = 0; i < tentativas; i++) {
@@ -304,7 +310,6 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     const [mesTarget, anoTarget] = periodoFinal.split("/");
     const mesFormatado = mesTarget.padStart(2, "0");
 
-    // Aplica a validação lógica corrigida nas parcelas e unifica as datas
     const transacoesHigienizadas = transacoesAcumuladas.map(t => {
       const transacaoLimpa = higienizarParcela(t);
 
@@ -328,7 +333,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       ],
     };
 
-    console.log(`[Sucesso] ${transacoesHigienizadas.length} transações consolidadas no período ${periodoFinal}.`);
+    console.log(`[Sucesso] ${transacoesHigienizadas.length} transações consolidadas.`);
     return estruturaPeriodos;
 
   } catch (error) {
@@ -364,7 +369,7 @@ Analise as transações acima e forneça:
 - Dicas simples de melhoria financeira
 
 IMPORTANTE:
-- Resposta curta
+- Resposta corta
 - Linguagem simples
 - Sem markdown
 - Sem listas complexas
