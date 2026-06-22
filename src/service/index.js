@@ -55,13 +55,11 @@ REGRA 4: O campo "valor" deve ser número puro sem símbolo monetário.
 REGRA 5: O campo "tags" deve conter apenas uma palavra complementar (ex: "comida", "transporte", "mensalidade").
 REGRA 6: Use "credito" ou "debito".
 REGRA 7: COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
-REGRA 8: Análise de Parcelas (RIGOROSA):
-- Só defina "eParcela" como true se o texto da transação contiver EXPLICITAMENTE uma indicação de parcelamento (ex: "02/10", "1/3", "Parc 05").
-- NUNCA confunda datas (ex: "12/04" ou "15/08") ou códigos numéricos do estabelecimento com parcelas. 
-- Na dúvida, se não houver um padrão claro de parcelamento no nome do estabelecimento, defina "eParcela" como false.
-- Se "eParcela" for false, OMITA por completo as chaves "parcelaAtual" e "parcelaFinal" do objeto.
-- Compras como "uber", "ifood", e compras pequenas não são parceladas, por isso coloque como "FALSE" ao não ser se for explicitamente mencionada.
-
+REGRA 8: Identificação Inteligente de Parcelas:
+- Analise a descrição da transação. Se houver um padrão de divisão numérico explícito indicando parcelamento (exemplos: "01/12", "Parc 2", "5 de 10", "1/3"), defina "eParcela" como true.
+- Extraia os números correspondentes para "parcelaAtual" e "parcelaFinal".
+- Se os números identificados forem IGUAIS à data da própria transação (ex: texto diz "POSTO 22/06" e a data da compra é 22 de junho), isso NÃO é uma parcela, é uma data. Nesse caso, defina "eParcela" como false.
+- Caso não haja nenhuma menção a parcelamento, defina "eParcela" como false.
 REGRA 9: Caso identifique uma parcela, coloque a parcela atual no campo parcelaAtual e a parcela final em parcelaFinal no objeto parcela. Caso não identifique a parcela, e/ou o campo "eParcela" seja FALSE, omita esses campos.
 
 Retorne SOMENTE JSON válido.
@@ -182,7 +180,8 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                         },
                         categoria: {
                           type: "STRING",
-                          description: "Categoria livre gerada dinamicamente com base no estabelecimento (ex: vestuario, academia, beleza, supermercado, religiao).",
+                          description:
+                            "Categoria livre gerada dinamicamente com base no estabelecimento (ex: vestuario, academia, beleza, supermercado, religiao).",
                         },
                         tags: {
                           type: "STRING",
@@ -192,22 +191,14 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                           properties: {
                             eParcela: {
                               type: "BOOLEAN",
-                              description: "DEFINA COMO TRUE APENAS se a descrição da transação indicar explicitamente uma compra parcelada (ex: Compra X 02/05). Se for uma compra à vista, ou se o número parecer uma data ou código, DEVE SER FALSE."
+                              description:
+                                "Defina como true se a descrição indicar uma compra parcelada (ex: '01/03'). Defina como false se for uma compra comum à vista ou se o número for apenas a data do dia.",
                             },
-                            parcelaAtual: {
-                              type: "NUMBER",
-                              description: "O número da parcela atual corrente. Omitir se eParcela for false."
-                            },
-                            parcelaFinal: {
-                              type: "NUMBER",
-                              description: "O total de parcelas da compra. Omitir se eParcela for false."
-                            }
+                            parcelaAtual: { type: "NUMBER" },
+                            parcelaFinal: { type: "NUMBER" },
                           },
-                          required: [
-                            "eParcela"
-                          ]
+                          required: ["eParcela"],
                         },
-
                       },
                       required: [
                         "data",
@@ -216,7 +207,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                         "tipo",
                         "categoria",
                         "tags",
-                        "parcela"
+                        "parcela",
                       ],
                     },
                   },
@@ -251,7 +242,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
   } catch (error) {
     console.error("ERRO GEMINI:", error);
     throw new Error(
-      `Falha ao processar as informações do extrato: ${error.message}`
+      `Falha ao processar as informações do extrato: ${error.message}`,
     );
   }
 }
