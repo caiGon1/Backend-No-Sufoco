@@ -61,8 +61,8 @@ function quebrarTextoEmBlocos(texto, linhasPorBloco = 45) {
   const lines = texto.split("\n");
   const blocos = [];
 
-  for (let i = 0; i < lines.length; i += linesPorBloco) {
-    const pedaco = lines.slice(i, i + linesPorBloco).join("\n");
+  for (let i = 0; i < lines.length; i += linhasPorBloco) {
+    const pedaco = lines.slice(i, i + linhasPorBloco).join("\n");
     blocos.push(pedaco);
   }
 
