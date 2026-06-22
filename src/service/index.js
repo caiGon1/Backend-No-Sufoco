@@ -26,14 +26,16 @@ PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 - NÃO invente nem infira datas. Se não houver data clara, use null.
 - Formato obrigatório de retorno: DD/MM/AAAA. Como o extrato costuma omitir o ano nas transações, use o ano e o mês do PERÍODO PRINCIPAL ("${periodoPrincipal}") para compor a resposta, tratando o primeiro número sempre como o DIA.
 
-## REGRAS DE PARCELAS 
-"eParcela" só é TRUE se houver um padrão EXPLÍCITO como:
-  ✅ "01/12", "Parc 2/6", "3 de 10", "1/3"
+## REGRAS DE PARCELAS (CRÍTICO)
+Identifique se a transação faz parte de um plano de parcelamento analisando o texto original (padrões como "01/12", "Parc 2/6", "3 de 10", "1/3").
+No objeto "parcela":
+- "eParcela": Defina como TRUE apenas se houver uma fração explícita indicando parcelamento.
+- "parcelaAtual": Extraia o número da parcela corrente (o primeiro número da fração).
+- "parcelaFinal": Extraia o número total de parcelas (o segundo número da fração).
 
-"eParcela" é SEMPRE FALSE nos casos abaixo:
-  ❌ Número isolado na descrição (ex: "POSTO 476", "LOJA 22")
-  ❌ Quando os números coincidem com a data da transação (ex: "COMPRA 15/06" numa transação do dia 15/06)
-  ❌ É um valor muito baixo, ao não ser se explicitamente dito na fatura/extrato.
+Negativação de falsos positivos:
+- "eParcela" é FALSE se for apenas um número isolado na descrição sem contexto de fração (ex: "POSTO 476", "LOJA 22").
+- "eParcela" é FALSE se os números forem idênticos à data do dia corrente (ex: "COMPRA 15/06" no dia 15).
 
 ## REGRAS DE CATEGORIZAÇÃO
 Você tem TOTAL LIBERDADE para criar e definir a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "beleza", "vestuario", "supermercado"). Use letras minúsculas e sem acentos. SÓ use a categoria "outros" em último caso.
@@ -42,7 +44,6 @@ Você tem TOTAL LIBERDADE para criar e definir a "categoria" de cada transação
 - NÃO invente transações. Se o bloco não tiver transações claras, retorne array vazio.
 - "valor" deve ser sempre POSITIVO. Use o campo "tipo" para indicar débito ou crédito.
 - "categoria": letra minúscula, sem acento. Use "outros" APENAS se nenhuma categoria fizer sentido.
-- Coloque o número da parcela atual em "parcelaAtual" e o número total de parcelas em "parcelaFinal" caso "eParcela" seja TRUE
 `;
 }
 
@@ -122,7 +123,6 @@ function detectarPeriodoPrincipal(texto) {
     jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12
   };
 
-  // Frente 1: Buscar por cabeçalhos textuais explícitos (ex: "Fatura de Maio/2026" ou "Fatura de Maio de 2026")
   const regexExtenso = /(?:fatura de|extrato de|mês de referência|referente a|mês|período)[:\s]*([a-zçáõéíóú]+)(?:[\s\/]+de[\s\/]+|[\s\/]+)(\d{4})/i;
   const matchExtenso = regexExtenso.exec(texto);
   if (matchExtenso) {
@@ -133,7 +133,6 @@ function detectarPeriodoPrincipal(texto) {
     }
   }
 
-  // Frente 2: Buscar data completa vinculada a palavras-chave (ex: "Vencimento: 10/06/2026")
   const regexDataChave = /(?:fatura de|vencimento|venc\.?|emissão|período)[:\s]+(\d{1,2})[\/](\d{1,2})[\/](\d{4})/i;
   const matchDataChave = regexDataChave.exec(texto);
   if (matchDataChave) {
@@ -142,7 +141,6 @@ function detectarPeriodoPrincipal(texto) {
     return `${mes}/${ano}`;
   }
 
-  // Frente 3: Padrão MM/AAAA explícito perto de palavras-chave (ex: "Ref: 05/2026")
   const regexMesAnoChave = /(?:fatura de|mês de referência|referência|ref\.?)[:\s]+(\d{1,2})[\/](\d{4})/i;
   const matchMesAnoChave = regexMesAnoChave.exec(texto);
   if (matchMesAnoChave) {
@@ -151,7 +149,6 @@ function detectarPeriodoPrincipal(texto) {
     return `${mes}/${ano}`;
   }
 
-  // Fallback: Método original de contagem estatística adaptado para evitar falsos positivos
   const matchesCompleto = texto.match(/\b(?:\d{1,2})\/(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
   const matchesMesAno = texto.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
   const contador = {};
@@ -178,34 +175,29 @@ function detectarPeriodoPrincipal(texto) {
     }
   }
 
-  // Se tudo falhar miseravelmente, assume o mês corrente baseado no ano do seu contexto (2026)
   return periodoPrincipal || `${new Date().getMonth() + 1}/2026`;
 }
 
 // ======================================================
-// FILTRO ROBUSTO DE PARCELAS
+// FILTRO ROBUSTO DE PARCELAS (CORRIGIDO)
 // ======================================================
 function higienizarParcela(t) {
-  let parcela = t.parcela || { eParcela: false };
+  let parcela = { ...t.parcela };
 
-  if (parcela.eParcela) {
-    const desc = (t.descricao || "").toUpperCase();
-    const padraoParcelaReal = /\b(\d{1,2})[\/\-\s](\d{1,2})\b/.exec(desc);
+  if (parcela && parcela.eParcela) {
+    const numAtual = parseInt(parcela.parcelaAtual, 10);
+    const numFinal = parseInt(parcela.parcelaFinal, 10);
 
-    if (!padraoParcelaReal) {
+    // Validação lógica baseada na própria extração estruturada da IA
+    if (isNaN(numAtual) || isNaN(numFinal) || numAtual > numFinal || numFinal <= 1) {
+      // Se os números não fizerem sentido, desmarca como parcela
       parcela = { eParcela: false };
     } else {
-      const numAtual = parseInt(padraoParcelaReal[1]);
-      const numFinal = parseInt(padraoParcelaReal[2]);
-
-      if (numAtual > numFinal || numFinal <= 1) {
-        parcela = { eParcela: false };
-      }
+      parcela.parcelaAtual = numAtual;
+      parcela.parcelaFinal = numFinal;
     }
-
-    if (parcela.eParcela && (parcela.parcelaAtual == null || parcela.parcelaFinal == null)) {
-      parcela = { eParcela: false };
-    }
+  } else {
+    parcela = { eParcela: false };
   }
 
   return { ...t, parcela };
@@ -233,7 +225,7 @@ async function chamarComRetry(fn, tentativas = 3, delayBase = 1500) {
 }
 
 // ======================================================
-// EXTRAÇÃO DE TRANSAÇÕES (MÉTODO SEQUENCIAL COM UNIFICAÇÃO DE PERÍODO)
+// EXTRAÇÃO DE TRANSAÇÕES
 // ======================================================
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
@@ -244,11 +236,9 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     throw new Error(error.message);
   }
 
-  // 1. Detecta o período real de forma inteligente no topo do arquivo
   const periodoFinal = detectarPeriodoPrincipal(textoDoExtrato);
   console.log(`[Detector] Período unificado identificado: ${periodoFinal}`);
 
-  // Fatiamento do texto
   const blocosDeTexto = quebrarTextoEmBlocos(textoDoExtrato, 120);
   console.log(`[Vercel Shield] Extrato processado em ${blocosDeTexto.length} bloco(s).`);
 
@@ -311,18 +301,15 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       }
     }
 
-    // 2. Higienização de parcelas + Frente 2: Forçar período único em todas as transações
     const [mesTarget, anoTarget] = periodoFinal.split("/");
     const mesFormatado = mesTarget.padStart(2, "0");
 
+    // Aplica a validação lógica corrigida nas parcelas e unifica as datas
     const transacoesHigienizadas = transacoesAcumuladas.map(t => {
-      // Primeiro limpa as regras de parcelas
       const transacaoLimpa = higienizarParcela(t);
 
-      // Se não houver data válida retornada pela IA, mantém null
       if (!transacaoLimpa.data) return transacaoLimpa;
 
-      // Isola o dia retornado pela IA e reconstrói a data com o MM/AAAA do período final
       const partesDaData = transacaoLimpa.data.split("/");
       if (partesDaData.length >= 2) {
         const dia = partesDaData[0].padStart(2, "0");
@@ -332,7 +319,6 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       return transacaoLimpa;
     });
 
-    // 3. Envelopa tudo no período detectado
     const estruturaPeriodos = {
       periodos: [
         {
