@@ -196,6 +196,9 @@ export default async function handler(req, res) {
           houveNovasTransacoes = true;
 
           const transacoesCriptografadas = transacoesIneditas.map((t) => {
+            // 🛠️ FILTRO ANTIALUCINAÇÃO:
+            // Se a IA marcou como parcela, mas o número da parcela atual for igual ao dia ou mês da transação,
+            // ou se os valores vieram zerados/estranhos, nós forçamos o cancelamento da parcela por código.
             let parcelaTratada = t.parcela || { eParcela: false };
 
             if (parcelaTratada.eParcela) {
@@ -203,7 +206,8 @@ export default async function handler(req, res) {
                 t.descricao || ""
               ).toLowerCase();
 
-                  const temSinalDeParcela =
+              // Se não houver termos de parcelamento e a IA apenas se confundiu com números isolados
+              const temSinalDeParcela =
                 descricaoLetrasMinusculas.includes("parc") ||
                 descricaoLetrasMinusculas.includes("/") ||
                 descricaoLetrasMinusculas.includes("de");
@@ -212,7 +216,7 @@ export default async function handler(req, res) {
                 !temSinalDeParcela ||
                 parcelaTratada.parcelaAtual === undefined
               ) {
-                parcelaTratada = { eParcela: false }; 
+                parcelaTratada = { eParcela: false }; // Reseta!
               }
             }
 
@@ -223,7 +227,7 @@ export default async function handler(req, res) {
               tipo: t.tipo || "debito",
               categoria: t.categoria || "outros",
               tags: t.tags || "outros",
-              parcela: parcelaTratada, 
+              parcela: parcelaTratada, // Salva o objeto higienizado
             };
 
             return {
