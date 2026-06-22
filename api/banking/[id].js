@@ -63,10 +63,9 @@ export default async function handler(req, res) {
       const periodosCorrigidosMap = {};
 
       (resposta.periodos || []).forEach(p => {
-        // Fallback: guarda o mesAno sugerido pela IA caso não consigamos ler da data da transação
         let fallbackMesAno = p.mesAno || "0/0000";
         if (fallbackMesAno.includes('-')) {
-          fallbackMesAno = fallbackMesAno.replace('-', '/'); // Normaliza 05-2026 para 05/2026
+          fallbackMesAno = fallbackMesAno.replace('-', '/');
         }
 
         (p.transacoes || []).forEach(t => {
@@ -75,27 +74,22 @@ export default async function handler(req, res) {
           if (t.data) {
             const dataStr = String(t.data).trim();
             
-            // Tenta YYYY-MM-DD ou YYYY/MM/DD
             const matchISO = dataStr.match(/(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})/);
-            // Tenta DD/MM/YYYY, DD.MM.YYYY ou DD/MM/YY (ano de 2 a 4 dígitos)
             const matchBR = dataStr.match(/(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{2,4})/);
 
             if (matchISO) {
               mesAnoStr = `${parseInt(matchISO[2], 10)}/${matchISO[1]}`;
             } else if (matchBR) {
               let ano = matchBR[3];
-              if (ano.length === 2) ano = "20" + ano; // Converte "26" em "2026"
+              if (ano.length === 2) ano = "20" + ano;
               mesAnoStr = `${parseInt(matchBR[2], 10)}/${ano}`;
             }
           }
 
-          // Se falhou em extrair a data (ex: a data no PDF era só "15/05"), 
-          // aproveitamos o agrupamento que a Inteligência Artificial sugeriu.
           if (!mesAnoStr) {
             mesAnoStr = fallbackMesAno;
           }
 
-          // Remove zeros à esquerda (ex: transforma "05/2026" em "5/2026")
           const partes = mesAnoStr.split('/');
           if (partes.length === 2 && partes[1] !== "0000") {
              mesAnoStr = `${parseInt(partes[0], 10)}/${partes[1]}`;
@@ -120,6 +114,7 @@ export default async function handler(req, res) {
       let periodosDoBanco = usuarioAtual?.periodos || [];
       const chavesExistentes = new Set();
 
+
       periodosDoBanco.forEach((p) => {
         if (!p.mesAno && p.mes && p.ano) {
           p.mesAno = `${p.mes}/${p.ano}`;
@@ -127,11 +122,21 @@ export default async function handler(req, res) {
         const periodoChave = p.mesAno;
 
         (p.transacoes || []).forEach((t) => {
-          const dataDesc = descriptografar(t.data) || "";
-          const descDesc = descriptografar(t.descricao) || "";
-          const valorDesc = descriptografar(t.valor) !== undefined ? String(descriptografar(t.valor)) : "";
+          try {
+           
+            if (t.dadosCriptografados) {
+              const objDescriptografado = JSON.parse(descriptografar(t.dadosCriptografados));
+              chavesExistentes.add(`${periodoChave}-${objDescriptografado.data}-${objDescriptografado.descricao}-${objDescriptografado.valor}`);
+            } else {
           
-          chavesExistentes.add(`${periodoChave}-${dataDesc}-${descDesc}-${valorDesc}`);
+              const dataDesc = descriptografar(t.data) || "";
+              const descDesc = descriptografar(t.descricao) || "";
+              const valorDesc = t.valor !== undefined ? String(descriptografar(t.valor)) : "";
+              chavesExistentes.add(`${periodoChave}-${dataDesc}-${descDesc}-${valorDesc}`);
+            }
+          } catch (err) {
+            console.error("Erro ao descriptografar transação antiga para o Set:", err);
+          }
         });
       });
 
@@ -156,14 +161,21 @@ export default async function handler(req, res) {
         if (transacoesIneditas.length > 0) {
           houveNovasTransacoes = true;
 
-          const transacoesCriptografadas = transacoesIneditas.map((t) => ({
-            data: criptografar(t.data || ""),
-            descricao: criptografar(t.descricao || ""),
-            valor: criptografar(t.valor !== undefined ? t.valor : 0),
-            tipo: criptografar(t.tipo || "debito"),
-            categoria: criptografar(t.categoria || "outros"),
-            tags: criptografar(t.tags || "outros"), 
-          }));
+          const transacoesCriptografadas = transacoesIneditas.map((t) => {
+            const transacaoTratada = {
+              data: t.data || "",
+              descricao: t.descricao || "",
+              valor: t.valor !== undefined ? t.valor : 0,
+              tipo: t.tipo || "debito",
+              categoria: t.categoria || "outros",
+              tags: t.tags || "outros",
+              parcela: t.parcela || { eParcela: false }
+            };
+
+            return {
+              dadosCriptografados: criptografar(JSON.stringify(transacaoTratada))
+            };
+          });
 
           if (periodoExistenteNoBanco) {
             if (!periodoExistenteNoBanco.transacoes) {
@@ -180,7 +192,6 @@ export default async function handler(req, res) {
         }
       });
 
-      // Log para terminal
       console.log("===== [DEBUG] PERÍODOS A SALVAR NO BANCO =====");
       periodosDoBanco.forEach((p, i) => {
         console.log(`  ${i + 1}: mesAno="${p.mesAno}" | ${p.transacoes?.length} transações`);
@@ -238,15 +249,25 @@ export default async function handler(req, res) {
 
       const transacoesDescriptografadas = (usuario.periodos || [])
         .flatMap((p) => p.transacoes || [])
-        .map((t) => ({
-          ...t,
-          data: descriptografar(t.data),
-          descricao: descriptografar(t.descricao),
-          valor: descriptografar(t.valor),
-          tipo: descriptografar(t.tipo),
-          categoria: descriptografar(t.categoria),
-          tags: t.tags ? descriptografar(t.tags) : "outros",
-        }));
+        .map((t) => {
+          try {
+            if (t.dadosCriptografados) {
+              return JSON.parse(descriptografar(t.dadosCriptografados));
+            }
+            return {
+              data: descriptografar(t.data),
+              descricao: descriptografar(t.descricao),
+              valor: descriptografar(t.valor),
+              tipo: descriptografar(t.tipo),
+              categoria: descriptografar(t.categoria),
+              tags: t.tags ? descriptografar(t.tags) : "outros",
+            };
+          } catch (err) {
+            console.error("Falha ao descriptografar item:", err);
+            return null;
+          }
+        })
+        .filter(Boolean); 
 
       if (transacoesDescriptografadas.length === 0) {
         return res.status(200).json({

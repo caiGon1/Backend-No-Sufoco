@@ -2,7 +2,7 @@ import { ObjectId } from "mongodb";
 import clientPromise from "../../lib/mongodb.js";
 import { verifyToken } from "../../middleware/authentication.js";
 import cors from "../../middleware/cors.js";
-import { descriptografar } from "../../middleware/crypto.js"; // Garanta que o caminho está correto de acordo com sua estrutura
+import { descriptografar } from "../../middleware/crypto.js"; 
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;
@@ -43,18 +43,40 @@ export default async function handler(req, res) {
           .json({ status: "Erro", message: "Usuário não encontrado." });
       }
 
-      // 🔓 MAPEAMENTO E DESCRIPTOGRAFIA: Restaura a integridade de todos os campos para o React
+      // 🔓 MAPEAMENTO E DESCRIPTOGRAFIA ATUALIZADO
       if (usuario.periodos && Array.isArray(usuario.periodos)) {
         usuario.periodos = usuario.periodos.map((periodo) => ({
           ...periodo,
-          transacoes: (periodo.transacoes || []).map((t) => ({
-            ...t,
-            data: descriptografar(t.data),
-            descricao: descriptografar(t.descricao),
-            valor: descriptografar(t.valor), // Voltará a ser do tipo numérico puro aqui
-            tipo: descriptografar(t.tipo),
-            categoria: descriptografar(t.categoria),
-          })),
+          transacoes: (periodo.transacoes || [])
+            .map((t) => {
+              try {
+                
+                if (t.dadosCriptografados) {
+                  const stringDescriptografada = descriptografar(
+                    t.dadosCriptografados,
+                  );
+                  return JSON.parse(stringDescriptografada);
+                }
+
+                
+                return {
+                  ...t,
+                  data: descriptografar(t.data),
+                  descricao: descriptografar(t.descricao),
+                  valor: descriptografar(t.valor),
+                  tipo: descriptografar(t.tipo),
+                  categoria: descriptografar(t.categoria),
+                  tags: t.tags ? descriptografar(t.tags) : "outros",
+                };
+              } catch (err) {
+                console.error(
+                  "Falha ao descriptografar ou dar parse na transação:",
+                  err,
+                );
+                return null; 
+              }
+            })
+            .filter(Boolean), 
         }));
       }
 
