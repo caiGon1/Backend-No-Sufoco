@@ -55,7 +55,12 @@ REGRA 4: O campo "valor" deve ser número puro sem símbolo monetário.
 REGRA 5: O campo "tags" deve conter apenas uma palavra complementar (ex: "comida", "transporte", "mensalidade").
 REGRA 6: Use "credito" ou "debito".
 REGRA 7: COMPRAS PARCELADAS DEVEM USAR O PERÍODO DA FATURA.
-REGRA 8: Caso identifique uma parcela, coloque o campo "eParcela" como true, caso o contrário, coloque como false. Caso não tenha certeza de uma parcela, não coloque como true.
+REGRA 8: Análise de Parcelas (RIGOROSA):
+- Só defina "eParcela" como true se o texto da transação contiver EXPLICITAMENTE uma indicação de parcelamento (ex: "02/10", "1/3", "Parc 05").
+- NUNCA confunda datas (ex: "12/04" ou "15/08") ou códigos numéricos do estabelecimento com parcelas. 
+- Na dúvida, se não houver um padrão claro de parcelamento no nome do estabelecimento, defina "eParcela" como false.
+- Se "eParcela" for false, OMITA por completo as chaves "parcelaAtual" e "parcelaFinal" do objeto.
+
 REGRA 9: Caso identifique uma parcela, coloque a parcela atual no campo parcelaAtual e a parcela final em parcelaFinal no objeto parcela. Caso não identifique a parcela, e/ou o campo "eParcela" seja FALSE, omita esses campos.
 
 Retorne SOMENTE JSON válido.
@@ -185,13 +190,16 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                           type: "OBJECT",
                           properties: {
                             eParcela: {
-                              type: "BOOLEAN"
+                              type: "BOOLEAN",
+                              description: "DEFINA COMO TRUE APENAS se a descrição da transação indicar explicitamente uma compra parcelada (ex: Compra X 02/05). Se for uma compra à vista, ou se o número parecer uma data ou código, DEVE SER FALSE."
                             },
                             parcelaAtual: {
-                              type: "NUMBER"
+                              type: "NUMBER",
+                              description: "O número da parcela atual corrente. Omitir se eParcela for false."
                             },
                             parcelaFinal: {
-                              type: "NUMBER"
+                              type: "NUMBER",
+                              description: "O total de parcelas da compra. Omitir se eParcela for false."
                             }
                           },
                           required: [
