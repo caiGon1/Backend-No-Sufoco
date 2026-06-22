@@ -174,6 +174,27 @@ function higienizarParcela(t) {
 }
 
 // ======================================================
+// RETRY COM BACKOFF EXPONENCIAL (PARA ERROS 503)
+// ======================================================
+async function chamarComRetry(fn, tentativas = 3, delayBase = 1500) {
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const mensagem = err?.message || "";
+      const e503 = mensagem.includes("503") || err?.status === 503;
+      if (e503 && i < tentativas - 1) {
+        const espera = delayBase * (i + 1);
+        console.warn(`[Retry ${i + 1}/${tentativas - 1}] 503 detectado, aguardando ${espera}ms...`);
+        await new Promise((r) => setTimeout(r, espera));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+// ======================================================
 // EXTRAÇÃO DE TRANSAÇÕES (MÉTODO SEQUENCIAL COM UNIFICAÇÃO DE PERÍODO)
 // ======================================================
 export async function extrairInformacoes(pdfBuffer, senha) {
@@ -200,44 +221,46 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       const bloco = blocosDeTexto[i];
       const promptDinamico = gerarPrompt(bloco, periodoFinal);
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.0,
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              transacoes: {
-                type: "ARRAY",
-                items: {
-                  type: "OBJECT",
-                  properties: {
-                    data: { type: "STRING" },
-                    descricao: { type: "STRING" },
-                    valor: { type: "NUMBER" },
-                    tipo: { type: "STRING", enum: ["credito", "debito"] },
-                    categoria: { type: "STRING" },
-                    tags: { type: "STRING" },
-                    parcela: {
-                      type: "OBJECT",
-                      properties: {
-                        eParcela: { type: "BOOLEAN" },
-                        parcelaAtual: { type: "NUMBER" },
-                        parcelaFinal: { type: "NUMBER" },
+      const response = await chamarComRetry(() =>
+        ai.models.generateContent({
+          model: "gemini-3.1-flash-lite",
+          config: {
+            responseMimeType: "application/json",
+            temperature: 0.0,
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                transacoes: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      data: { type: "STRING" },
+                      descricao: { type: "STRING" },
+                      valor: { type: "NUMBER" },
+                      tipo: { type: "STRING", enum: ["credito", "debito"] },
+                      categoria: { type: "STRING" },
+                      tags: { type: "STRING" },
+                      parcela: {
+                        type: "OBJECT",
+                        properties: {
+                          eParcela: { type: "BOOLEAN" },
+                          parcelaAtual: { type: "NUMBER" },
+                          parcelaFinal: { type: "NUMBER" },
+                        },
+                        required: ["eParcela"],
                       },
-                      required: ["eParcela"],
                     },
+                    required: ["data", "descricao", "valor", "tipo", "categoria", "tags", "parcela"],
                   },
-                  required: ["data", "descricao", "valor", "tipo", "categoria", "tags", "parcela"],
                 },
               },
+              required: ["transacoes"],
             },
-            required: ["transacoes"],
           },
-        },
-        contents: [{ role: "user", parts: [{ text: promptDinamico }] }],
-      });
+          contents: [{ role: "user", parts: [{ text: promptDinamico }] }],
+        })
+      );
 
       const resultadoBruto = JSON.parse(response.text.trim());
 
@@ -246,7 +269,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       }
 
       if (i < blocosDeTexto.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 400));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
 
