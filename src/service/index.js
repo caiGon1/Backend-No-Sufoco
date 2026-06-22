@@ -261,7 +261,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
       const response = await chamarComRetry(() =>
         ai.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-3.1-flash-lite",
           config: {
             responseMimeType: "application/json",
             temperature: 0.0,
