@@ -25,15 +25,23 @@ PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 O texto do extrato foi extraído de uma tabela linha por linha. Cada linha segue rigidamente a ordem de colunas da esquerda para a direita:
 \`[DATA DA TRANSAÇÃO] [DESCRIÇÃO DO ESTABELECIMENTO] [FRAÇÃO DA PARCELA (Se houver)] [VALOR]\`
 
-Exemplos de interpretação correta:
+Exemplos de interpretação CORRETA (Com Parcela):
 - "04/02 EBENEZER EVANGELICA MU 03/03 68,64"
   -> Primeira data ("04/02") é a DATA da transação.
   -> Texto do meio ("EBENEZER EVANGELICA MU") é a DESCRIÇÃO.
-  -> Segunda fração ("03/03") que vem após o texto é a PARCELA (parcelaAtual: 3, parcelaFinal: 3).
+  -> Segunda fração ("03/03") que vem APÓS o texto é a PARCELA (parcelaAtual: 3, parcelaFinal: 3). eParcela: TRUE.
 
 - "03/03 PERFUMARIA PRINCESA 02/02 69,25"
   -> Primeira data ("03/03") é a DATA da transação.
-  -> Segunda fração ("02/02") após o texto é a PARCELA (parcelaAtual: 2, parcelaFinal: 2).
+  -> Segunda fração ("02/02") APÓS o texto é a PARCELA (parcelaAtual: 2, parcelaFinal: 2). eParcela: TRUE.
+
+Exemplos de interpretação CORRETA (Sem Parcela - NÃO ALUCINE):
+- "25/04 LOJA 25 DE MARCO 40,00"
+  -> O texto "25 DE MARCO" faz parte do nome do estabelecimento. eParcela: FALSE.
+- "10/05 POSTO 24/7 150,00"
+  -> "24/7" é o nome do posto, NÃO é uma parcela. eParcela: FALSE.
+- "15/06 PAGAMENTO BOLETO 100,00"
+  -> Apenas uma data no início. eParcela: FALSE.
 
 ## REGRAS DE DATA
 - Use EXATAMENTE a primeira data que aparece no início da linha da transação.
@@ -41,10 +49,11 @@ Exemplos de interpretação correta:
 
 ## REGRAS DE PARCELAS
 No objeto "parcela":
-- "eParcela": Será TRUE sempre que houver uma segunda fração/padrão identificável após a descrição (ex: "04/12", "03/03", "02/02", "01/02").
-- "parcelaAtual": O primeiro número dessa segunda fração.
-- "parcelaFinal": O segundo número dessa segunda fração.
-- Se a linha contiver apenas UMA data/fração (ex: "25/04 LOJA X 40,00"), "eParcela" é SEMPRE FALSE.
+- "eParcela": Será TRUE APENAS se houver uma clara indicação de fracionamento de compra isolada no final da descrição (ex: "04/12", "03/03", "02/02", "01/02").
+- Números, frações ou datas que fazem parte do NOME da loja (ex: "Posto 24/7", "Loja 25/03") NÃO são parcelas.
+- "parcelaAtual": O primeiro número dessa segunda fração isolada (apenas se eParcela for TRUE).
+- "parcelaFinal": O segundo número dessa segunda fração isolada (apenas se eParcela for TRUE).
+- Se a linha contiver apenas UMA data/fração no início (ex: "25/04 LOJA X 40,00") ou se a possível "fração" for parte natural do nome da loja, "eParcela" é SEMPRE FALSE e os campos "parcelaAtual" e "parcelaFinal" não devem ser preenchidos.
 
 ## REGRAS DE CATEGORIZAÇÃO
 Defina a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "vestuario", "supermercado"). Use letras minúsculas e sem acentos.

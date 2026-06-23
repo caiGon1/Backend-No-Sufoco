@@ -42,12 +42,10 @@ export default async function handler(req, res) {
 
     if (!id || !ObjectId.isValid(id)) {
       res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-      return res
-        .status(400)
-        .json({
-          status: "Erro",
-          message: "ID de usuário inválido ou não fornecido.",
-        });
+      return res.status(400).json({
+        status: "Erro",
+        message: "ID de usuário inválido ou não fornecido.",
+      });
     }
 
     let arquivoForm = null;
@@ -65,12 +63,10 @@ export default async function handler(req, res) {
 
       if (!arquivoForm || !arquivoForm.filepath) {
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-        return res
-          .status(400)
-          .json({
-            status: "Erro",
-            details: "Nenhum arquivo PDF foi detetado.",
-          });
+        return res.status(400).json({
+          status: "Erro",
+          details: "Nenhum arquivo PDF foi detetado.",
+        });
       }
 
       const pdfBuffer = fs.readFileSync(arquivoForm.filepath);
@@ -196,27 +192,17 @@ export default async function handler(req, res) {
           houveNovasTransacoes = true;
 
           const transacoesCriptografadas = transacoesIneditas.map((t) => {
-            // 🛠️ FILTRO ANTIALUCINAÇÃO:
-            // Se a IA marcou como parcela, mas o número da parcela atual for igual ao dia ou mês da transação,
-            // ou se os valores vieram zerados/estranhos, nós forçamos o cancelamento da parcela por código.
+
             let parcelaTratada = t.parcela || { eParcela: false };
 
             if (parcelaTratada.eParcela) {
-              const descricaoLetrasMinusculas = (
-                t.descricao || ""
-              ).toLowerCase();
-
-              // Se não houver termos de parcelamento e a IA apenas se confundiu com números isolados
-              const temSinalDeParcela =
-                descricaoLetrasMinusculas.includes("parc") ||
-                descricaoLetrasMinusculas.includes("/") ||
-                descricaoLetrasMinusculas.includes("de");
-
               if (
-                !temSinalDeParcela ||
-                parcelaTratada.parcelaAtual === undefined
+                parcelaTratada.parcelaAtual === undefined ||
+                parcelaTratada.parcelaFinal === undefined ||
+                parcelaTratada.parcelaFinal <= 1 ||
+                parcelaTratada.parcelaAtual > parcelaTratada.parcelaFinal
               ) {
-                parcelaTratada = { eParcela: false }; // Reseta!
+                parcelaTratada = { eParcela: false }; 
               }
             }
 
@@ -227,7 +213,7 @@ export default async function handler(req, res) {
               tipo: t.tipo || "debito",
               categoria: t.categoria || "outros",
               tags: t.tags || "outros",
-              parcela: parcelaTratada, // Salva o objeto higienizado
+              parcela: parcelaTratada,
             };
 
             return {
@@ -271,13 +257,11 @@ export default async function handler(req, res) {
           );
       } else {
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-        return res
-          .status(400)
-          .json({
-            status: "Erro",
-            message:
-              "Todas as transações deste arquivo já foram importadas anteriormente.",
-          });
+        return res.status(400).json({
+          status: "Erro",
+          message:
+            "Todas as transações deste arquivo já foram importadas anteriormente.",
+        });
       }
 
       res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
