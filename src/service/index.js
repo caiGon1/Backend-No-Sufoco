@@ -23,20 +23,23 @@ PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 
 ## REGRA DE ORIENTAÇÃO DE LAYOUT (CRÍTICO)
 O texto do extrato foi extraído de uma tabela linha por linha. A ordem das colunas da esquerda para a direita geralmente é:
-\`[CÓDIGO DE COMPRA (Opcional)] [DATA DA TRANSAÇÃO] [DESCRIÇÃO DO ESTABELECIMENTO] [FRAÇÃO DA PARCELA (Se houver)] [VALOR]\`
+\`[INDICADOR DE CAPTURA (Opcional)] [DATA DA TRANSAÇÃO] [DESCRIÇÃO DO ESTABELECIMENTO] [FRAÇÃO DA PARCELA (Se houver)] [VALOR]\`
 
-* ATENÇÃO: Algumas faturas do Santander incluem um número solto no início da linha (ex: "1", "3"). Ignore esse número completamente, ele NÃO é uma parcela.
+* ATENÇÃO: Números isolados no início da linha (como "1", "2" ou "3") indicam a forma como a compra foi capturada (ícones de aproximação, internet, cartão físico que o leitor de PDF transformou em texto). Você deve IGNORAR esse número inicial completamente. Ele NÃO faz parte da data e NÃO é uma parcela.
 
 Exemplos de interpretação CORRETA (Com Parcela):
 - "1   04/02 EBENEZER EVANGELICA MU 03/03 68,64"
-  -> Ignore o "1" inicial.
+  -> O "1" inicial é apenas o meio de captura. IGNORE-O.
   -> Data da transação: "04/02".
   -> Descrição: "EBENEZER EVANGELICA MU".
   -> Parcela: "03/03" (parcelaAtual: 3, parcelaFinal: 3). eParcela: TRUE.
 
 Exemplos de interpretação CORRETA (Sem Parcela - NÃO ALUCINE):
 - "3   22/04 PDV*MATRIZ EMBALAGENS 44,12"
-  -> Ignore o "3" inicial. Ele NÃO é uma parcela. eParcela: FALSE.
+  -> O "3" inicial é apenas o meio de captura. IGNORE-O.
+  -> Data da transação: "22/04".
+  -> Descrição: "PDV*MATRIZ EMBALAGENS".
+  -> Parcela: eParcela: FALSE.
 - "10/05 POSTO 24/7 150,00"
   -> "24/7" é o nome do posto, NÃO é uma parcela. eParcela: FALSE.
 
@@ -48,16 +51,13 @@ Exemplos de interpretação CORRETA (Sem Parcela - NÃO ALUCINE):
 ## REGRAS DE PARCELAS
 No objeto "parcela":
 - "eParcela": Será TRUE APENAS se houver uma clara indicação de fracionamento com barra isolada no final da descrição (ex: "04/12", "03/03", "02/02").
-- Números soltos no INÍCIO da linha (ex: "1", "3") ou números que fazem parte do NOME da loja (ex: "Posto 24/7") NÃO são parcelas.
+- Números soltos no INÍCIO da linha (ex: "1", "2", "3" indicando meio de captura) ou números que fazem parte do NOME da loja (ex: "Posto 24/7") NÃO são parcelas.
 - "parcelaAtual": O primeiro número da fração isolada (apenas se eParcela for TRUE).
 - "parcelaFinal": O segundo número da fração isolada (apenas se eParcela for TRUE).
 - Se a linha NÃO tiver uma fração com barra no final da descrição, "eParcela" é SEMPRE FALSE e os campos "parcelaAtual" e "parcelaFinal" não devem ser preenchidos.
 
 ## REGRAS DE CATEGORIZAÇÃO
 Defina a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "vestuario", "supermercado"). Use letras minúsculas e sem acentos.
-
-## REGRA DE EXCLUSÃO
-Durante a leitura de cada linha, descarte qualquer número isolado que apareça no início da linha antes da data. Considere esse número como 'índice de compra' e não o processe em hipótese alguma como parte da descrição ou da parcela.
 
 ## REGRAS GERAIS
 - "valor": Deve ser sempre POSITIVO. Use o campo "tipo" para indicar se é débito ou crédito (pagamentos de fatura ou estornos como "DL*TIKTOK SHOP S -25,99" são crédito).
