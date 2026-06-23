@@ -56,6 +56,9 @@ No objeto "parcela":
 ## REGRAS DE CATEGORIZAÇÃO
 Defina a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "vestuario", "supermercado"). Use letras minúsculas e sem acentos.
 
+## REGRA DE EXCLUSÃO
+Durante a leitura de cada linha, descarte qualquer número isolado que apareça no início da linha antes da data. Considere esse número como 'índice de compra' e não o processe em hipótese alguma como parte da descrição ou da parcela.
+
 ## REGRAS GERAIS
 - "valor": Deve ser sempre POSITIVO. Use o campo "tipo" para indicar se é débito ou crédito (pagamentos de fatura ou estornos como "DL*TIKTOK SHOP S -25,99" são crédito).
 - Não invente dados. Se não houver transações claras, retorne um array vazio.
