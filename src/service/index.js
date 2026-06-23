@@ -12,6 +12,7 @@ const ai = new GoogleGenAI({
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
   return `
 Você é um sistema especialista em conciliação bancária de ALTA PRECISÃO.
+
 Extraia APENAS as transações presentes LITERALMENTE no texto abaixo.
 
 CONTEÚDO DO EXTRATO:
@@ -21,47 +22,164 @@ ${textoDoExtrato}
 
 PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 
-## REGRA DE ORIENTAÇÃO DE LAYOUT (CRÍTICO)
-O texto do extrato foi extraído de uma tabela linha por linha. A ordem das colunas da esquerda para a direita geralmente é:
-\`[INDICADOR DE CAPTURA (Opcional)] [DATA DA TRANSAÇÃO] [DESCRIÇÃO DO ESTABELECIMENTO] [FRAÇÃO DA PARCELA (Se houver)] [VALOR]\`
+# REGRA DE ORIENTAÇÃO DE LAYOUT (CRÍTICO)
 
-* ATENÇÃO: Números isolados no início da linha (como "1", "2" ou "3") indicam a forma como a compra foi capturada (ícones de aproximação, internet, cartão físico que o leitor de PDF transformou em texto). Você deve IGNORAR esse número inicial completamente. Ele NÃO faz parte da data e NÃO é uma parcela.
+O texto foi extraído de um PDF e pode conter erros de OCR.
 
-Exemplos de interpretação CORRETA (Com Parcela):
-- "1   04/02 EBENEZER EVANGELICA MU 03/03 68,64"
-  -> O "1" inicial é apenas o meio de captura. IGNORE-O.
-  -> Data da transação: "04/02".
-  -> Descrição: "EBENEZER EVANGELICA MU".
-  -> Parcela: "03/03" (parcelaAtual: 3, parcelaFinal: 3). eParcela: TRUE.
+A estrutura das linhas normalmente segue o padrão:
 
-Exemplos de interpretação CORRETA (Sem Parcela - NÃO ALUCINE):
-- "3   22/04 PDV*MATRIZ EMBALAGENS 44,12"
-  -> O "3" inicial é apenas o meio de captura. IGNORE-O.
-  -> Data da transação: "22/04".
-  -> Descrição: "PDV*MATRIZ EMBALAGENS".
-  -> Parcela: eParcela: FALSE.
-- "10/05 POSTO 24/7 150,00"
-  -> "24/7" é o nome do posto, NÃO é uma parcela. eParcela: FALSE.
+[INDICADOR DE CAPTURA OPCIONAL] [DATA] [DESCRIÇÃO] [PARCELA OPCIONAL] [VALOR]
 
-## REGRAS DE DATA (CRÍTICO)
-- Extraia EXATAMENTE o dia e o mês que aparecem na linha da transação (ex: se na linha diz "22/04", o mês é Abril, não altere isso).
-- Formato obrigatório de retorno: DD/MM/AAAA. 
-- Use o ANO do PERÍODO PRINCIPAL ("${periodoPrincipal}") para preencher o ano que falta. NÃO sobrescreva o mês da transação com o mês do período principal.
+Exemplo:
 
-## REGRAS DE PARCELAS
-No objeto "parcela":
-- "eParcela": Será TRUE APENAS se houver uma clara indicação de fracionamento com barra isolada no final da descrição (ex: "04/12", "03/03", "02/02").
-- Números soltos no INÍCIO da linha (ex: "1", "2", "3" indicando meio de captura) ou números que fazem parte do NOME da loja (ex: "Posto 24/7") NÃO são parcelas.
-- "parcelaAtual": O primeiro número da fração isolada (apenas se eParcela for TRUE).
-- "parcelaFinal": O segundo número da fração isolada (apenas se eParcela for TRUE).
-- Se a linha NÃO tiver uma fração com barra no final da descrição, "eParcela" é SEMPRE FALSE e os campos "parcelaAtual" e "parcelaFinal" não devem ser preenchidos.
+1 04/02 EBENEZER EVANGELICA MU 03/03 68,64
 
-## REGRAS DE CATEGORIZAÇÃO
-Defina a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "vestuario", "supermercado"). Use letras minúsculas e sem acentos.
+onde:
 
-## REGRAS GERAIS
-- "valor": Deve ser sempre POSITIVO. Use o campo "tipo" para indicar se é débito ou crédito (pagamentos de fatura ou estornos como "DL*TIKTOK SHOP S -25,99" são crédito).
-- Não invente dados. Se não houver transações claras, retorne um array vazio.
+* "1" = indicador de captura (aproximação, internet, cartão físico etc.)
+* "04/02" = data
+* "EBENEZER EVANGELICA MU" = descrição
+* "03/03" = parcela
+* "68,64" = valor
+
+ATENÇÃO:
+
+Números isolados no início da linha devem ser IGNORADOS COMPLETAMENTE.
+
+Exemplos:
+
+* "1 07/04 AGITSACADEMIA 209,90"
+* "2 08/04 UBER TRIP 22,12"
+* "3 08/04 MACEDO 89,50"
+
+Nestes casos:
+
+* O número inicial NÃO faz parte da descrição.
+* O número inicial NÃO é parcela.
+* O número inicial NÃO deve aparecer no resultado.
+
+# REGRA ABSOLUTA DE PARCELAMENTO (MUITO IMPORTANTE)
+
+Uma compra SOMENTE pode ser considerada parcelada quando existir explicitamente o padrão:
+
+NN/NN
+
+onde:
+
+* ambos os lados possuem exatamente 2 dígitos;
+* a fração aparece imediatamente antes do valor;
+* a fração está separada da descrição por espaço;
+* a fração não faz parte do nome do estabelecimento.
+
+Exemplos VÁLIDOS:
+
+* "SMARTFIT 03/12 89,90"
+* "MAGAZINE XPTO 01/10 250,00"
+* "EBENEZER EVANGELICA MU 03/03 68,64"
+
+Resultado:
+
+{
+"eParcela": true,
+"parcelaAtual": 3,
+"parcelaFinal": 12
+}
+
+Exemplos INVÁLIDOS:
+
+* "POSTO 24/7 150,00"
+* "UBER 2024/01 25,00"
+* "3 07/04 AGITSACADEMIA 209,90"
+* "2 08/04 MACEDO 89,50"
+* "MERCADO 12/05"
+
+Nestes casos:
+
+{
+"eParcela": false
+}
+
+REGRA DE SEGURANÇA:
+
+Se houver QUALQUER dúvida sobre a existência de parcelamento:
+
+{
+"eParcela": false
+}
+
+Prefira gerar falso negativo a gerar falso positivo.
+
+Nunca deduza parcelamentos.
+Nunca infira parcelamentos.
+Nunca transforme números do início da linha em parcelas.
+
+# REGRAS DE DATA
+
+* Extraia exatamente a data exibida na linha.
+* Preserve dia e mês exatamente como aparecem.
+* Utilize o ano presente em "${periodoPrincipal}".
+* Formato obrigatório: DD/MM/AAAA.
+
+Exemplo:
+
+Linha:
+22/04 FARMACIA 39,90
+
+Resultado:
+22/04/AAAA
+
+# REGRAS DE CATEGORIZAÇÃO
+
+Defina uma categoria coerente para cada transação.
+
+Exemplos:
+
+* academia
+* transporte
+* supermercado
+* alimentacao
+* farmacia
+* saude
+* vestuario
+* servicos
+* educacao
+* lazer
+
+Utilize:
+
+* letras minúsculas
+* sem acentos
+
+# REGRAS DE VALOR
+
+* O campo "valor" deve ser sempre positivo.
+* Utilize o campo "tipo" para identificar débito ou crédito.
+* Estornos e pagamentos de fatura devem ser classificados como crédito.
+
+# REGRAS GERAIS
+
+* Não invente transações.
+* Não invente parcelamentos.
+* Não invente datas.
+* Não corrija dados do extrato.
+* Utilize apenas informações explicitamente presentes no texto.
+* Se não houver transações identificáveis, retorne um array vazio.
+
+# CHECKLIST OBRIGATÓRIO ANTES DE MARCAR eParcela = true
+
+Confirme TODOS os itens abaixo:
+
+1. Existe um padrão NN/NN.
+2. O padrão aparece imediatamente antes do valor.
+3. O padrão não está no início da linha.
+4. O padrão não faz parte do nome do estabelecimento.
+5. O padrão não representa data.
+6. O padrão está explicitamente escrito no extrato.
+
+Se qualquer item falhar:
+
+eParcela = false
+
 `;
 }
 
