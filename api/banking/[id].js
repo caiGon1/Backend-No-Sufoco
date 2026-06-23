@@ -78,48 +78,30 @@ export default async function handler(req, res) {
       const periodosCorrigidosMap = {};
 
       (resposta.periodos || []).forEach((p) => {
-        let fallbackMesAno = p.mesAno || "0/0000";
-        if (fallbackMesAno.includes("-")) {
-          fallbackMesAno = fallbackMesAno.replace("-", "/");
+        // Pega o período principal da fatura que a IA detectou (ex: "05/2026")
+        let mesAnoStr = p.mesAno || "0/0000";
+
+        // Padroniza formatação (ex: "05-2026" para "05/2026")
+        if (mesAnoStr.includes("-")) {
+          mesAnoStr = mesAnoStr.replace("-", "/");
         }
 
+        // Remove zeros à esquerda para alinhar com o formato salvo no banco (ex: "05/2026" -> "5/2026")
+        const partes = mesAnoStr.split("/");
+        if (partes.length === 2 && partes[1] !== "0000") {
+          mesAnoStr = `${parseInt(partes[0], 10)}/${partes[1]}`;
+        }
+
+        if (!periodosCorrigidosMap[mesAnoStr]) {
+          periodosCorrigidosMap[mesAnoStr] = {
+            mesAno: mesAnoStr,
+            transacoes: [],
+          };
+        }
+
+        // Joga TODAS as transações deste extrato no mesmo período da fatura,
+        // mantendo as datas originais de cada compra intactas.
         (p.transacoes || []).forEach((t) => {
-          let mesAnoStr = null;
-
-          if (t.data) {
-            const dataStr = String(t.data).trim();
-
-            const matchISO = dataStr.match(
-              /(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})/,
-            );
-            const matchBR = dataStr.match(
-              /(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{2,4})/,
-            );
-
-            if (matchISO) {
-              mesAnoStr = `${parseInt(matchISO[2], 10)}/${matchISO[1]}`;
-            } else if (matchBR) {
-              let ano = matchBR[3];
-              if (ano.length === 2) ano = "20" + ano;
-              mesAnoStr = `${parseInt(matchBR[2], 10)}/${ano}`;
-            }
-          }
-
-          if (!mesAnoStr) {
-            mesAnoStr = fallbackMesAno;
-          }
-
-          const partes = mesAnoStr.split("/");
-          if (partes.length === 2 && partes[1] !== "0000") {
-            mesAnoStr = `${parseInt(partes[0], 10)}/${partes[1]}`;
-          }
-
-          if (!periodosCorrigidosMap[mesAnoStr]) {
-            periodosCorrigidosMap[mesAnoStr] = {
-              mesAno: mesAnoStr,
-              transacoes: [],
-            };
-          }
           periodosCorrigidosMap[mesAnoStr].transacoes.push(t);
         });
       });
@@ -192,7 +174,6 @@ export default async function handler(req, res) {
           houveNovasTransacoes = true;
 
           const transacoesCriptografadas = transacoesIneditas.map((t) => {
-
             let parcelaTratada = t.parcela || { eParcela: false };
 
             if (parcelaTratada.eParcela) {
@@ -202,7 +183,7 @@ export default async function handler(req, res) {
                 parcelaTratada.parcelaFinal <= 1 ||
                 parcelaTratada.parcelaAtual > parcelaTratada.parcelaFinal
               ) {
-                parcelaTratada = { eParcela: false }; 
+                parcelaTratada = { eParcela: false };
               }
             }
 
