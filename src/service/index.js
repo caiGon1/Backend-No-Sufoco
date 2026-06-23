@@ -296,11 +296,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
     // 🔍 LOGS PARA INSPEÇÃO:
     console.log("==================================================");
-    console.log("--- TEXTO BRUTO DO PDF (PRIMEIRAS 15 LINHAS) ---");
-    console.log(textoDoExtrato.split("\n").slice(0, 15).join("\n"));
-    console.log("==================================================");
-    console.log("--- TEXTO HIGIENIZADO COM REGEX (PRIMEIRAS 15 LINHAS) ---");
-    console.log(textoLimpo.split("\n").slice(0, 15).join("\n"));
+    console.log(textoLimpo);
     console.log("==================================================");
 
   } catch (error) {
