@@ -14,7 +14,7 @@ function higienizarTextoFatura(textoBruto) {
 
   return textoBruto
     .split("\n")
-    .map(linha => {
+    .map((linha) => {
       // Remove espaços extras nas pontas da linha
       let linhaTratada = linha.trim();
 
@@ -28,7 +28,10 @@ function higienizarTextoFatura(textoBruto) {
       linhaTratada = linhaTratada.replace(/^[1-3]\s+/, "");
 
       // 3. Afasta letras ou caracteres que o PDF colou grudado na data (ex: "29/04DL" vira "29/04 DL")
-      linhaTratada = linhaTratada.replace(/^(\d{2}\/\d{2})([A-Za-z*])/, "$1 $2");
+      linhaTratada = linhaTratada.replace(
+        /^(\d{2}\/\d{2})([A-Za-z*])/,
+        "$1 $2",
+      );
 
       return linhaTratada;
     })
@@ -182,23 +185,49 @@ async function extrairTextoDePDF(pdfBuffer, senha) {
 // ======================================================
 function detectarPeriodoPrincipal(texto) {
   const mesesEps = {
-    janeiro: 1, fevereiro: 2, marco: 3, março: 3, abril: 4, maio: 5, junho: 6,
-    julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
-    jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
-    jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12
+    janeiro: 1,
+    fevereiro: 2,
+    marco: 3,
+    março: 3,
+    abril: 4,
+    maio: 5,
+    junho: 6,
+    julho: 7,
+    agosto: 8,
+    setembro: 9,
+    outubro: 10,
+    novembro: 11,
+    dezembro: 12,
+    jan: 1,
+    fev: 2,
+    mar: 3,
+    abr: 4,
+    mai: 5,
+    jun: 6,
+    jul: 7,
+    ago: 8,
+    set: 9,
+    out: 10,
+    nov: 11,
+    dez: 12,
   };
 
-  const regexExtenso = /(?:fatura de|extrato de|mês de referência|referente a|mês|período)[:\s]*([a-zçáõéíóú]+)(?:[\s\/]+de[\s\/]+|[\s\/]+)(\d{4})/i;
+  const regexExtenso =
+    /(?:fatura de|extrato de|mês de referência|referente a|mês|período)[:\s]*([a-zçáõéíóú]+)(?:[\s\/]+de[\s\/]+|[\s\/]+)(\d{4})/i;
   const matchExtenso = regexExtenso.exec(texto);
   if (matchExtenso) {
-    const mesTexto = matchExtenso[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const mesTexto = matchExtenso[1]
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
     const ano = matchExtenso[2];
     if (mesesEps[mesTexto]) {
       return `${mesesEps[mesTexto]}/${ano}`;
     }
   }
 
-  const regexDataChave = /(?:fatura de|vencimento|venc\.?|emissão|período)[:\s]+(\d{1,2})[\/](\d{1,2})[\/](\d{4})/i;
+  const regexDataChave =
+    /(?:fatura de|vencimento|venc\.?|emissão|período)[:\s]+(\d{1,2})[\/](\d{1,2})[\/](\d{4})/i;
   const matchDataChave = regexDataChave.exec(texto);
   if (matchDataChave) {
     const mes = parseInt(matchDataChave[2], 10);
@@ -206,7 +235,8 @@ function detectarPeriodoPrincipal(texto) {
     return `${mes}/${ano}`;
   }
 
-  const regexMesAnoChave = /(?:fatura de|mês de referência|referência|ref\.?)[:\s]+(\d{1,2})[\/](\d{4})/i;
+  const regexMesAnoChave =
+    /(?:fatura de|mês de referência|referência|ref\.?)[:\s]+(\d{1,2})[\/](\d{4})/i;
   const matchMesAnoChave = regexMesAnoChave.exec(texto);
   if (matchMesAnoChave) {
     const mes = parseInt(matchMesAnoChave[1], 10);
@@ -214,7 +244,8 @@ function detectarPeriodoPrincipal(texto) {
     return `${mes}/${ano}`;
   }
 
-  const matchesCompleto = texto.match(/\b(?:\d{1,2})\/(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
+  const matchesCompleto =
+    texto.match(/\b(?:\d{1,2})\/(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
   const matchesMesAno = texto.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/g) || [];
   const contador = {};
 
@@ -253,7 +284,12 @@ function higienizarParcela(t) {
     const numAtual = parseInt(parcela.parcelaAtual, 10);
     const numFinal = parseInt(parcela.parcelaFinal, 10);
 
-    if (isNaN(numAtual) || isNaN(numFinal) || numAtual > numFinal || numFinal <= 1) {
+    if (
+      isNaN(numAtual) ||
+      isNaN(numFinal) ||
+      numAtual > numFinal ||
+      numFinal <= 1
+    ) {
       parcela = { eParcela: false };
     } else {
       parcela.parcelaAtual = numAtual;
@@ -278,7 +314,9 @@ async function chamarComRetry(fn, tentativas = 3, delayBase = 1500) {
       const e503 = mensagem.includes("503") || err?.status === 503;
       if (e503 && i < tentativas - 1) {
         const espera = delayBase * (i + 1);
-        console.warn(`[Retry ${i + 1}/${tentativas - 1}] 503 detectado, aguardando ${espera}ms...`);
+        console.warn(
+          `[Retry ${i + 1}/${tentativas - 1}] 503 detectado, aguardando ${espera}ms...`,
+        );
         await new Promise((r) => setTimeout(r, espera));
       } else {
         throw err;
@@ -296,7 +334,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   try {
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
-    
+
     // ✅ Aplica a limpeza das sujeiras do PDF imediatamente
     textoLimpo = higienizarTextoFatura(textoDoExtrato);
 
@@ -304,7 +342,6 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     console.log("==================================================");
     console.log(textoLimpo);
     console.log("==================================================");
-
   } catch (error) {
     throw new Error(error.message);
   }
@@ -312,7 +349,9 @@ export async function extrairInformacoes(pdfBuffer, senha) {
   console.log(`[Detector] Período unificado identificado: ${periodoFinal}`);
 
   const blocosDeTexto = quebrarTextoEmBlocos(textoLimpo, 120);
-  console.log(`[Vercel Shield] Extrato processado em ${blocosDeTexto.length} bloco(s).`);
+  console.log(
+    `[Vercel Shield] Extrato processado em ${blocosDeTexto.length} bloco(s).`,
+  );
 
   const transacoesAcumuladas = [];
 
@@ -351,7 +390,15 @@ export async function extrairInformacoes(pdfBuffer, senha) {
                         required: ["eParcela"],
                       },
                     },
-                    required: ["data", "descricao", "valor", "tipo", "categoria", "tags", "parcela"],
+                    required: [
+                      "data",
+                      "descricao",
+                      "valor",
+                      "tipo",
+                      "categoria",
+                      "tags",
+                      "parcela",
+                    ],
                   },
                 },
               },
@@ -359,12 +406,15 @@ export async function extrairInformacoes(pdfBuffer, senha) {
             },
           },
           contents: [{ role: "user", parts: [{ text: promptDinamico }] }],
-        })
+        }),
       );
 
       const resultadoBruto = JSON.parse(response.text.trim());
 
-      if (resultadoBruto.transacoes && Array.isArray(resultadoBruto.transacoes)) {
+      if (
+        resultadoBruto.transacoes &&
+        Array.isArray(resultadoBruto.transacoes)
+      ) {
         transacoesAcumuladas.push(...resultadoBruto.transacoes);
       }
 
@@ -374,17 +424,28 @@ export async function extrairInformacoes(pdfBuffer, senha) {
     }
 
     const [mesTarget, anoTarget] = periodoFinal.split("/");
-    const mesFormatado = mesTarget.padStart(2, "0");
 
-    const transacoesHigienizadas = transacoesAcumuladas.map(t => {
+    const transacoesHigienizadas = transacoesAcumuladas.map((t) => {
       const transacaoLimpa = higienizarParcela(t);
 
       if (!transacaoLimpa.data) return transacaoLimpa;
 
+      // A IA devolve a data (ex: "22/04" ou "22/04/2026")
       const partesDaData = transacaoLimpa.data.split("/");
+
       if (partesDaData.length >= 2) {
         const dia = partesDaData[0].padStart(2, "0");
-        transacaoLimpa.data = `${dia}/${mesFormatado}/${anoTarget}`;
+        const mesDaTransacao = partesDaData[1].padStart(2, "0"); // ✅ Pega o mês REAL da compra
+
+        // Se a IA devolver o ano, usa ele. Se não, usa o anoTarget do período principal
+        let anoDaTransacao = partesDaData[2] || anoTarget;
+
+        // Garante que o ano tenha 4 dígitos (se a IA devolver "26", vira "2026")
+        if (anoDaTransacao.length === 2) {
+          anoDaTransacao = `20${anoDaTransacao}`;
+        }
+
+        transacaoLimpa.data = `${dia}/${mesDaTransacao}/${anoDaTransacao}`;
       }
 
       return transacaoLimpa;
@@ -399,12 +460,15 @@ export async function extrairInformacoes(pdfBuffer, senha) {
       ],
     };
 
-    console.log(`[Sucesso] ${transacoesHigienizadas.length} transações consolidadas.`);
+    console.log(
+      `[Sucesso] ${transacoesHigienizadas.length} transações consolidadas.`,
+    );
     return estruturaPeriodos;
-
   } catch (error) {
     console.error("ERRO NO PROCESSAMENTO:", error);
-    throw new Error(`Falha ao processar as informações do extrato: ${error.message}`);
+    throw new Error(
+      `Falha ao processar as informações do extrato: ${error.message}`,
+    );
   }
 }
 
