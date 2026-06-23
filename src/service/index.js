@@ -25,7 +25,6 @@ function higienizarTextoFatura(textoBruto) {
       linhaTratada = linhaTratada.replace(/^(\d{2}\/\d{2})([A-Za-z*])/, "$1 $2");
 
       return linhaTratada;
-      console.log(linhaTratada)
     })
     .join("\n");
 }
@@ -291,12 +290,22 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
   try {
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
+    
     // ✅ Aplica a limpeza das sujeiras do PDF imediatamente
     textoLimpo = higienizarTextoFatura(textoDoExtrato);
+
+    // 🔍 LOGS PARA INSPEÇÃO:
+    console.log("==================================================");
+    console.log("--- TEXTO BRUTO DO PDF (PRIMEIRAS 15 LINHAS) ---");
+    console.log(textoDoExtrato.split("\n").slice(0, 15).join("\n"));
+    console.log("==================================================");
+    console.log("--- TEXTO HIGIENIZADO COM REGEX (PRIMEIRAS 15 LINHAS) ---");
+    console.log(textoLimpo.split("\n").slice(0, 15).join("\n"));
+    console.log("==================================================");
+
   } catch (error) {
     throw new Error(error.message);
   }
-
   const periodoFinal = detectarPeriodoPrincipal(textoLimpo);
   console.log(`[Detector] Período unificado identificado: ${periodoFinal}`);
 
