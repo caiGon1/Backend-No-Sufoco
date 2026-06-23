@@ -25,6 +25,7 @@ function higienizarTextoFatura(textoBruto) {
       linhaTratada = linhaTratada.replace(/^(\d{2}\/\d{2})([A-Za-z*])/, "$1 $2");
 
       return linhaTratada;
+      console.log(linhaTratada)
     })
     .join("\n");
 }
