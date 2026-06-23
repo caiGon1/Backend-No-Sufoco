@@ -22,44 +22,42 @@ ${textoDoExtrato}
 PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 
 ## REGRA DE ORIENTAÇÃO DE LAYOUT (CRÍTICO)
-O texto do extrato foi extraído de uma tabela linha por linha. Cada linha segue rigidamente a ordem de colunas da esquerda para a direita:
-\`[DATA DA TRANSAÇÃO] [DESCRIÇÃO DO ESTABELECIMENTO] [FRAÇÃO DA PARCELA (Se houver)] [VALOR]\`
+O texto do extrato foi extraído de uma tabela linha por linha. A ordem das colunas da esquerda para a direita geralmente é:
+\`[CÓDIGO DE COMPRA (Opcional)] [DATA DA TRANSAÇÃO] [DESCRIÇÃO DO ESTABELECIMENTO] [FRAÇÃO DA PARCELA (Se houver)] [VALOR]\`
+
+* ATENÇÃO: Algumas faturas do Santander incluem um número solto no início da linha (ex: "1", "3"). Ignore esse número completamente, ele NÃO é uma parcela.
 
 Exemplos de interpretação CORRETA (Com Parcela):
-- "04/02 EBENEZER EVANGELICA MU 03/03 68,64"
-  -> Primeira data ("04/02") é a DATA da transação.
-  -> Texto do meio ("EBENEZER EVANGELICA MU") é a DESCRIÇÃO.
-  -> Segunda fração ("03/03") que vem APÓS o texto é a PARCELA (parcelaAtual: 3, parcelaFinal: 3). eParcela: TRUE.
-
-- "03/03 PERFUMARIA PRINCESA 02/02 69,25"
-  -> Primeira data ("03/03") é a DATA da transação.
-  -> Segunda fração ("02/02") APÓS o texto é a PARCELA (parcelaAtual: 2, parcelaFinal: 2). eParcela: TRUE.
+- "1   04/02 EBENEZER EVANGELICA MU 03/03 68,64"
+  -> Ignore o "1" inicial.
+  -> Data da transação: "04/02".
+  -> Descrição: "EBENEZER EVANGELICA MU".
+  -> Parcela: "03/03" (parcelaAtual: 3, parcelaFinal: 3). eParcela: TRUE.
 
 Exemplos de interpretação CORRETA (Sem Parcela - NÃO ALUCINE):
-- "25/04 LOJA 25 DE MARCO 40,00"
-  -> O texto "25 DE MARCO" faz parte do nome do estabelecimento. eParcela: FALSE.
+- "3   22/04 PDV*MATRIZ EMBALAGENS 44,12"
+  -> Ignore o "3" inicial. Ele NÃO é uma parcela. eParcela: FALSE.
 - "10/05 POSTO 24/7 150,00"
   -> "24/7" é o nome do posto, NÃO é uma parcela. eParcela: FALSE.
-- "15/06 PAGAMENTO BOLETO 100,00"
-  -> Apenas uma data no início. eParcela: FALSE.
 
-## REGRAS DE DATA
-- Use EXATAMENTE a primeira data que aparece no início da linha da transação.
-- Formato obrigatório de retorno: DD/MM/AAAA. Use o ano e o mês do PERÍODO PRINCIPAL ("${periodoPrincipal}") para compor a resposta.
+## REGRAS DE DATA (CRÍTICO)
+- Extraia EXATAMENTE o dia e o mês que aparecem na linha da transação (ex: se na linha diz "22/04", o mês é Abril, não altere isso).
+- Formato obrigatório de retorno: DD/MM/AAAA. 
+- Use o ANO do PERÍODO PRINCIPAL ("${periodoPrincipal}") para preencher o ano que falta. NÃO sobrescreva o mês da transação com o mês do período principal.
 
 ## REGRAS DE PARCELAS
 No objeto "parcela":
-- "eParcela": Será TRUE APENAS se houver uma clara indicação de fracionamento de compra isolada no final da descrição (ex: "04/12", "03/03", "02/02", "01/02").
-- Números, frações ou datas que fazem parte do NOME da loja (ex: "Posto 24/7", "Loja 25/03") NÃO são parcelas.
-- "parcelaAtual": O primeiro número dessa segunda fração isolada (apenas se eParcela for TRUE).
-- "parcelaFinal": O segundo número dessa segunda fração isolada (apenas se eParcela for TRUE).
-- Se a linha contiver apenas UMA data/fração no início (ex: "25/04 LOJA X 40,00") ou se a possível "fração" for parte natural do nome da loja, "eParcela" é SEMPRE FALSE e os campos "parcelaAtual" e "parcelaFinal" não devem ser preenchidos.
+- "eParcela": Será TRUE APENAS se houver uma clara indicação de fracionamento com barra isolada no final da descrição (ex: "04/12", "03/03", "02/02").
+- Números soltos no INÍCIO da linha (ex: "1", "3") ou números que fazem parte do NOME da loja (ex: "Posto 24/7") NÃO são parcelas.
+- "parcelaAtual": O primeiro número da fração isolada (apenas se eParcela for TRUE).
+- "parcelaFinal": O segundo número da fração isolada (apenas se eParcela for TRUE).
+- Se a linha NÃO tiver uma fração com barra no final da descrição, "eParcela" é SEMPRE FALSE e os campos "parcelaAtual" e "parcelaFinal" não devem ser preenchidos.
 
 ## REGRAS DE CATEGORIZAÇÃO
 Defina a "categoria" de cada transação de forma lógica e humanizada (ex: "academia", "saude", "vestuario", "supermercado"). Use letras minúsculas e sem acentos.
 
 ## REGRAS GERAIS
-- "valor": Deve ser sempre POSITIVO. Use o campo "tipo" para indicar débito ou crédito.
+- "valor": Deve ser sempre POSITIVO. Use o campo "tipo" para indicar se é débito ou crédito (pagamentos de fatura ou estornos como "DL*TIKTOK SHOP S -25,99" são crédito).
 - Não invente dados. Se não houver transações claras, retorne um array vazio.
 `;
 }
