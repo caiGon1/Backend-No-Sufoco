@@ -7,7 +7,30 @@ const ai = new GoogleGenAI({
 });
 
 // ======================================================
-// GERAÇÃO DINÂMICA DO PROMPT (COM REGRAS DE LAYOUT)
+// HIGIENIZAÇÃO DE TEXTO (REGEX PARA LIMPEZA DE OCR)
+// ======================================================
+function higienizarTextoFatura(textoBruto) {
+  if (!textoBruto) return "";
+
+  return textoBruto
+    .split("\n")
+    .map(linha => {
+      // 1. Remove o número do meio de captura (1, 2 ou 3) isolado no início antes da data
+      // Transforma: "3   22/04 PDV..." -> "22/04 PDV..."
+      // Transforma: "2 29/04DL..." -> "29/04DL..."
+      let linhaTratada = linha.replace(/^[1-3]\s*(\d{2}\/\d{2})/, "$1");
+
+      // 2. Afasta letras ou caracteres que o PDF colou na data
+      // Transforma: "29/04DL *UBERRIDES" -> "29/04 DL *UBERRIDES"
+      linhaTratada = linhaTratada.replace(/^(\d{2}\/\d{2})([A-Za-z*])/, "$1 $2");
+
+      return linhaTratada;
+    })
+    .join("\n");
+}
+
+// ======================================================
+// GERAÇÃO DINÂMICA DO PROMPT (TEXTO JÁ LIMPO)
 // ======================================================
 function gerarPrompt(textoDoExtrato, periodoPrincipal) {
   return `
@@ -24,162 +47,62 @@ PERÍODO PRINCIPAL DA FATURA: "${periodoPrincipal}"
 
 # REGRA DE ORIENTAÇÃO DE LAYOUT (CRÍTICO)
 
-O texto foi extraído de um PDF e pode conter erros de OCR.
+O texto foi pré-processado e a estrutura das linhas de transação segue RIGIDAMENTE o padrão:
 
-A estrutura das linhas normalmente segue o padrão:
-
-[INDICADOR DE CAPTURA OPCIONAL] [DATA] [DESCRIÇÃO] [PARCELA OPCIONAL] [VALOR]
+[DATA] [DESCRIÇÃO DO ESTABELECIMENTO] [PARCELA OPCIONAL] [VALOR]
 
 Exemplo:
-
-1 04/02 EBENEZER EVANGELICA MU 03/03 68,64
-
-onde:
-
-* "1" = indicador de captura (aproximação, internet, cartão físico etc.)
+"04/02 EBENEZER EVANGELICA MU 03/03 68,64"
 * "04/02" = data
 * "EBENEZER EVANGELICA MU" = descrição
 * "03/03" = parcela
 * "68,64" = valor
 
-ATENÇÃO:
-
-Números isolados no início da linha devem ser IGNORADOS COMPLETAMENTE.
-
-Exemplos:
-
-* "1 07/04 AGITSACADEMIA 209,90"
-* "2 08/04 UBER TRIP 22,12"
-* "3 08/04 MACEDO 89,50"
-
-Nestes casos:
-
-* O número inicial NÃO faz parte da descrição.
-* O número inicial NÃO é parcela.
-* O número inicial NÃO deve aparecer no resultado.
-
 # REGRA ABSOLUTA DE PARCELAMENTO (MUITO IMPORTANTE)
 
 Uma compra SOMENTE pode ser considerada parcelada quando existir explicitamente o padrão:
-
 NN/NN
 
 onde:
-
 * ambos os lados possuem exatamente 2 dígitos;
-* a fração aparece imediatamente antes do valor;
+* a fração aparece isolada imediatamente ANTES do valor;
 * a fração está separada da descrição por espaço;
-* a fração não faz parte do nome do estabelecimento.
+* a fração não faz parte do nome do estabelecimento (ex: "Posto 24/7").
 
-Exemplos VÁLIDOS:
+Exemplos VÁLIDOS (eParcela: true):
+* "SMARTFIT 03/12 89,90" -> parcelaAtual: 3, parcelaFinal: 12
+* "MAGAZINE XPTO 01/10 250,00" -> parcelaAtual: 1, parcelaFinal: 10
 
-* "SMARTFIT 03/12 89,90"
-* "MAGAZINE XPTO 01/10 250,00"
-* "EBENEZER EVANGELICA MU 03/03 68,64"
-
-Resultado:
-
-{
-"eParcela": true,
-"parcelaAtual": 3,
-"parcelaFinal": 12
-}
-
-Exemplos INVÁLIDOS:
-
+Exemplos INVÁLIDOS (eParcela: false):
 * "POSTO 24/7 150,00"
 * "UBER 2024/01 25,00"
-* "3 07/04 AGITSACADEMIA 209,90"
-* "2 08/04 MACEDO 89,50"
 * "MERCADO 12/05"
 
-Nestes casos:
-
-{
-"eParcela": false
-}
-
 REGRA DE SEGURANÇA:
-
-Se houver QUALQUER dúvida sobre a existência de parcelamento:
-
-{
-"eParcela": false
-}
-
-Prefira gerar falso negativo a gerar falso positivo.
-
-Nunca deduza parcelamentos.
-Nunca infira parcelamentos.
-Nunca transforme números do início da linha em parcelas.
+Se houver QUALQUER dúvida sobre a existência de parcelamento, defina eParcela = false.
+Nunca deduza parcelamentos. Nunca infira parcelamentos.
 
 # REGRAS DE DATA
-
-* Extraia exatamente a data exibida na linha.
-* Preserve dia e mês exatamente como aparecem.
+* Extraia exatamente a data (DD/MM) exibida no início da linha.
 * Utilize o ano presente em "${periodoPrincipal}".
 * Formato obrigatório: DD/MM/AAAA.
-
-Exemplo:
-
-Linha:
-22/04 FARMACIA 39,90
-
-Resultado:
-22/04/AAAA
+* Não altere o mês original da transação.
 
 # REGRAS DE CATEGORIZAÇÃO
-
-Defina uma categoria coerente para cada transação.
-
-Exemplos:
-
-* academia
-* transporte
-* supermercado
-* alimentacao
-* farmacia
-* saude
-* vestuario
-* servicos
-* educacao
-* lazer
-
-Utilize:
-
-* letras minúsculas
-* sem acentos
+Defina uma categoria coerente para cada transação (ex: academia, transporte, supermercado, alimentacao, farmacia, saude, vestuario). 
+Utilize letras minúsculas e sem acentos.
 
 # REGRAS DE VALOR
-
 * O campo "valor" deve ser sempre positivo.
-* Utilize o campo "tipo" para identificar débito ou crédito.
-* Estornos e pagamentos de fatura devem ser classificados como crédito.
-
-# REGRAS GERAIS
-
-* Não invente transações.
-* Não invente parcelamentos.
-* Não invente datas.
-* Não corrija dados do extrato.
-* Utilize apenas informações explicitamente presentes no texto.
-* Se não houver transações identificáveis, retorne um array vazio.
+* Utilize o campo "tipo" para identificar se é "debito" ou "credito" (estornos como "-25,99" ou pagamentos de fatura são crédito).
 
 # CHECKLIST OBRIGATÓRIO ANTES DE MARCAR eParcela = true
-
 Confirme TODOS os itens abaixo:
-
 1. Existe um padrão NN/NN.
-2. O padrão aparece imediatamente antes do valor.
+2. O padrão aparece logo antes do valor.
 3. O padrão não está no início da linha.
 4. O padrão não faz parte do nome do estabelecimento.
-5. O padrão não representa data.
-6. O padrão está explicitamente escrito no extrato.
-
-Se qualquer item falhar:
-
-eParcela = false
-
+Se qualquer item falhar: eParcela = false.
 `;
 }
 
@@ -363,19 +286,20 @@ async function chamarComRetry(fn, tentativas = 3, delayBase = 1500) {
 // ======================================================
 export async function extrairInformacoes(pdfBuffer, senha) {
   let textoDoExtrato = "";
+  let textoLimpo = "";
 
   try {
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
-    
+    // ✅ Aplica a limpeza das sujeiras do PDF imediatamente
+    textoLimpo = higienizarTextoFatura(textoDoExtrato);
   } catch (error) {
     throw new Error(error.message);
   }
 
-  const periodoFinal = detectarPeriodoPrincipal(textoDoExtrato);
-  console.log(textoDoExtrato);
+  const periodoFinal = detectarPeriodoPrincipal(textoLimpo);
   console.log(`[Detector] Período unificado identificado: ${periodoFinal}`);
 
-  const blocosDeTexto = quebrarTextoEmBlocos(textoDoExtrato, 120);
+  const blocosDeTexto = quebrarTextoEmBlocos(textoLimpo, 120);
   console.log(`[Vercel Shield] Extrato processado em ${blocosDeTexto.length} bloco(s).`);
 
   const transacoesAcumuladas = [];
@@ -387,7 +311,7 @@ export async function extrairInformacoes(pdfBuffer, senha) {
 
       const response = await chamarComRetry(() =>
         ai.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-3.1-flash-lite",
           config: {
             responseMimeType: "application/json",
             temperature: 0.0,
@@ -499,7 +423,7 @@ Analise as transações acima e forneça:
 - Dicas simples de melhoria financeira
 
 IMPORTANTE:
-- Resposta corta
+- Resposta curta
 - Linguagem simples
 - Sem markdown
 - Sem listas complexas
