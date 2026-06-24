@@ -1,15 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
-import { Resend } from "resend";
 import clientPromise from "../../lib/mongodb.js";
+import nodemailer from "nodemailer"; // 🟢 Alterado: Importa o Nodemailer
 
 const client = await clientPromise;
 const db = client.db("NoSufocoDB");
-const usersCollection = db.collection("users"); 
+const usersCollection = db.collection("users");
 
 const key = process.env.GOOGLE_API_KEY;
-const resend = new Resend(process.env.RESEND_API_KEY);
 const ai = new GoogleGenAI({
   apiKey: key,
+});
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.GMAIL_USER, // Seu e-mail do Gmail
+    pass: process.env.GMAIL_APP_PASS, // A senha de app de 16 letras
+  },
 });
 
 // ─── Ícones SVG inline ───────────────────────────────────────────────
@@ -148,29 +155,20 @@ function gerarCorpoEmail(alertasDoUsuario) {
 }
 
 // ─── Função Principal ────────────────────────────────────────────────
-async function analisarAcoes() {
+export async function analisarAcoes() { 
   console.log("Iniciando rotina diária...");
 
   try {
-    // 1. AGREGAÇÃO ATUALIZADA
-    // Busca todos os tickers únicos que pelo menos 1 usuário quer monitorar
-    const resultadoAgregacao = await usersCollection.aggregate([
-      // Passo A: Pega apenas usuários com o monitoramento geral ativado
-      { $match: { "acoes.monitora": true } },
-      
-      // Passo B: Transforma o objeto { "PETR4": true, "VALE3": false } 
-      // em um array [{k: "PETR4", v: true}, {k: "VALE3", v: false}]
-      { $project: { ativosArray: { $objectToArray: "$acoes.ativos" } } },
-      
-      // Passo C: Separa o array em vários documentos para filtrar
-      { $unwind: "$ativosArray" },
-      
-      // Passo D: Mantém APENAS os ativos que estão marcados como TRUE
-      { $match: { "ativosArray.v": true } },
-      
-      // Passo E: Agrupa pelos nomes dos tickers (a chave 'k') sem repetir
-      { $group: { _id: "$ativosArray.k" } }
-    ]).toArray(); // No driver nativo do Mongo, precisamos chamar .toArray()
+
+    const resultadoAgregacao = await usersCollection
+      .aggregate([
+        { $match: { "acoes.monitora": true } },
+        { $project: { ativosArray: { $objectToArray: "$acoes.ativos" } } },
+        { $unwind: "$ativosArray" },
+        { $match: { "ativosArray.v": true } },
+        { $group: { _id: "$ativosArray.k" } },
+      ])
+      .toArray();
 
     const tickersDoSistema = resultadoAgregacao.map((item) => item._id);
 
@@ -181,7 +179,6 @@ async function analisarAcoes() {
 
     const dadosCompactosParaIA = [];
 
-    // 2. BUSCA NA API (Mantida igual)
     for (const ticker of tickersDoSistema) {
       try {
         const response = await fetch(`https://brapi.dev/api/quote/${ticker}`);
@@ -211,7 +208,7 @@ async function analisarAcoes() {
       return;
     }
 
-    // 3. IA (Mantida igual)
+    // 3. IA 
     const systemInstruction =
       "Você é um analista financeiro sênior. Analise o resumo do histórico desses ativos. " +
       "Identifique quais estão em momento oportuno de COMPRAR (se caiu muito perto das mínimas) ou VENDER (se subiu muito perto das máximas). " +
@@ -220,10 +217,11 @@ async function analisarAcoes() {
       '{"PETR4": {"status": "VENDER", "motivo": "Explicação curta em português"}}';
 
     const aiResponse = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.1-flash-lite", // 🟢 Atualizado: Alinhado com o padrão do seu projeto (index.js)
       config: {
         systemInstruction: systemInstruction,
         responseMimeType: "application/json",
+        temperature: 0.0, // Mantém a resposta determinística e técnica
       },
       contents: [
         {
@@ -233,24 +231,20 @@ async function analisarAcoes() {
       ],
     });
 
-    const vereditosIA = JSON.parse(aiResponse.text);
+    const vereditosIA = JSON.parse(aiResponse.text.trim());
 
     // 4. VERIFICAÇÃO DOS USUÁRIOS E DISPARO DE E-MAIL
-    // Busca apenas usuários que ativaram a chave geral de monitoramento
-    const usuariosComMonitoramento = await usersCollection.find({
-      "acoes.monitora": true,
-    }).toArray(); // Driver nativo do mongo exige o .toArray()
+    const usuariosComMonitoramento = await usersCollection
+      .find({
+        "acoes.monitora": true,
+      })
+      .toArray();
 
     for (const usuario of usuariosComMonitoramento) {
       let alertasDoUsuario = [];
-      
-      // Proteção extra caso "ativos" esteja vazio ou não exista no BD
       const ativosDoUsuario = usuario.acoes?.ativos || {};
 
-      // Itera sobre as chaves e valores do objeto: ex: ticker = "PETR4", monitorar = true
       for (const [ticker, monitorar] of Object.entries(ativosDoUsuario)) {
-        
-        // Verifica se a chave específica daquela ação está como 'true'
         if (monitorar === true) {
           const analiseAtivo = vereditosIA[ticker.toUpperCase()];
 
@@ -264,15 +258,15 @@ async function analisarAcoes() {
         }
       }
 
-      // Se achou algum alerta para as ações que ESTE usuário mandou monitorar, envia o e-mail
       if (alertasDoUsuario.length > 0) {
         const htmlCorpoEmail = gerarCorpoEmail(alertasDoUsuario);
 
-        await resend.emails.send({
-          from: "Alertas Finanças <alertas@seuapp.com>",
+        // 🟢 CORREÇÃO CRÍTICA: Ajustado para enviar para o e-mail do usuário iterado
+        await transporter.sendMail({
+          from: `"No Sufoco Análises" <${process.env.GMAIL_USER}>`, 
           to: usuario.email,
-          subject: `Resumo Diário: ${alertasDoUsuario.length} alertas de mercado`,
-          html: htmlCorpoEmail, // Corrigido para 'html'
+          subject: `Resumo Diário: ${alertasDoUsuario.length} alertas de mercado 📈`,
+          html: htmlCorpoEmail, 
         });
       }
     }
