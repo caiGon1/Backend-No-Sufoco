@@ -1,22 +1,32 @@
 import clientPromise from "../../lib/mongodb.js";
 import { ObjectId } from "mongodb";
 import { verifyToken } from "../../middleware/authentication.js";
-import cors from "../../middleware/cors.js";
 
 export default async function handler(req, res) {
-      if (cors(req, res)) return;
+  // ==========================================
+  // CONFIGURAÇÃO GLOBAL DE CORS
+  // ==========================================
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  // O "Authorization" abaixo é OBRIGATÓRIO para o seu token JWT não dar erro de CORS
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  // O navegador SEMPRE envia um OPTIONS antes do POST/PUT/DELETE. 
+  // Temos que devolver status 200 imediatamente para ele liberar a requisição real.
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   // ==========================================
   // POST: SALVAR NOVOS ATIVOS SELECIONADOS
   // ==========================================
   if (req.method === "POST") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
-      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(401).json({ error: "Unauthorized: Invalid or missing token" });
     }
 
     try {
-      // CORREÇÃO: Padronizado igual aos outros métodos para evitar TypeError
       const userId = req.user?.id || decodedUser.id;
       const { ativosSelecionados } = req.body;
 
@@ -69,7 +79,6 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
-      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(401).json({ error: "Unauthorized: Invalid or missing token" });
     }
 
@@ -88,12 +97,10 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: "Usuário não encontrado." });
       }
 
-      // CORREÇÃO: Deixando mais seguro para evitar "Cannot convert undefined or null to object"
       const ativosDoUsuario = usuario.acoes?.ativos || {};
       const listaDeNomes = Object.keys(ativosDoUsuario);
 
-      // Retorna: { ativos: ["PETR4", "VALE3", "BTC"] }
-      return res.status(200).json({ ativos: listaDeNomes });
+      return res.status(200).json({ ativos: listaDeNomes, acoes: usuario.acoes });
     } catch (error) {
       console.error("Erro ao buscar ativos:", error);
       return res.status(500).json({ error: "Erro interno ao buscar os ativos." });
@@ -106,7 +113,6 @@ export default async function handler(req, res) {
   if (req.method === "DELETE") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
-      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(401).json({ error: "Unauthorized: Invalid or missing token" });
     }
 
@@ -151,7 +157,6 @@ export default async function handler(req, res) {
   if (req.method === "PUT" || req.method === "PATCH") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
-      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(401).json({ error: "Unauthorized: Invalid or missing token" });
     }
 
@@ -195,7 +200,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Erro interno ao atualizar configurações." });
     }
   }
-
 
   res.setHeader("Allow", ["GET", "POST", "PUT", "PATCH", "DELETE"]);
   return res.status(405).json({ error: `Método ${req.method} não permitido` });
