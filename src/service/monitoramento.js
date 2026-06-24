@@ -1,10 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 import clientPromise from "../../lib/mongodb.js";
-import nodemailer from "nodemailer"; // 🟢 Alterado: Importa o Nodemailer
+import nodemailer from "nodemailer";
 
-const client = await clientPromise;
-const db = client.db("NoSufocoDB");
-const usersCollection = db.collection("users");
+// Remova a linha global: const client = await clientPromise;
+// Remova a linha global: const db = client.db("NoSufocoDB");
+// Remova a linha global: const usersCollection = db.collection("users");
 
 const key = process.env.GOOGLE_API_KEY;
 const ai = new GoogleGenAI({
@@ -14,8 +14,8 @@ const ai = new GoogleGenAI({
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.GMAIL_USER, // Seu e-mail do Gmail
-    pass: process.env.GMAIL_APP_PASS, // A senha de app de 16 letras
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASS,
   },
 });
 
@@ -155,11 +155,16 @@ function gerarCorpoEmail(alertasDoUsuario) {
 }
 
 // ─── Função Principal ────────────────────────────────────────────────
-export async function analisarAcoes() { 
+export async function analisarAcoes() {
   console.log("Iniciando rotina diária...");
 
   try {
+    // 🟢 MOVIDO PARA CÁ: A conexão agora acontece com segurança dentro do escopo assíncrono
+    const client = await clientPromise;
+    const db = client.db("NoSufocoDB");
+    const usersCollection = db.collection("users");
 
+    // 1. AGREGAÇÃO
     const resultadoAgregacao = await usersCollection
       .aggregate([
         { $match: { "acoes.monitora": true } },
