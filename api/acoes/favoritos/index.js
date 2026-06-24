@@ -6,13 +6,20 @@ export default async function handler(req, res) {
   // ==========================================
   // CONFIGURAÇÃO GLOBAL DE CORS
   // ==========================================
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+const allowedOrigins = ["https://no-sufoco.vercel.app", "http://localhost:5173"];
+  const origin = req.headers.origin;
+  
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  // O "Authorization" abaixo é OBRIGATÓRIO para o seu token JWT não dar erro de CORS
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  // O navegador SEMPRE envia um OPTIONS antes do POST/PUT/DELETE. 
-  // Temos que devolver status 200 imediatamente para ele liberar a requisição real.
+  // Resposta rápida para o Preflight (OPTIONS)
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
