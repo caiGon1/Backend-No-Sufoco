@@ -1,4 +1,4 @@
-import { analisarAcoes } from "../../src/service/monitoramento.js";
+import { analisarAcoes } from "../../../src/service/monitoramento.js";
 
 export default async function handler(req, res) {
   // 1. Só aceita requisições do tipo GET (padrão do Vercel Crons)
