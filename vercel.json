@@ -3,5 +3,11 @@
     "api/**/*.js": {
       "includeFiles": "node_modules/{@google/genai,pdfjs-dist}/**"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/acoes/monitoramento",
+      "schedule": "15 21 * * 1-5"
+    }
+  ]
 }
