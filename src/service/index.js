@@ -15,19 +15,11 @@ function higienizarTextoFatura(textoBruto) {
   return textoBruto
     .split("\n")
     .map((linha) => {
-      // Remove espaços extras nas pontas da linha
       let linhaTratada = linha.trim();
 
-      // 1. Remove número de captura (1, 2 ou 3) seguido de QUALQUER quantidade de espaços antes da data
-      // Exemplo: "1   28/01 CIA..." -> "28/01 CIA..."
-      // Exemplo: "3   03/03 EBE..." -> "03/03 EBE..."
+
       linhaTratada = linhaTratada.replace(/^[1-3]\s+(\d{2}\/\d{2})/, "$1");
-
-      // 2. Caso o OCR junte o indicador sem espaço nenhum (ex: "229/04" ou "2 29/04DL")
-      // Remove o número 1, 2 ou 3 se ele estiver isolado bem no começo por espaços antes da data
       linhaTratada = linhaTratada.replace(/^[1-3]\s+/, "");
-
-      // 3. Afasta letras ou caracteres que o PDF colou grudado na data (ex: "29/04DL" vira "29/04 DL")
       linhaTratada = linhaTratada.replace(
         /^(\d{2}\/\d{2})([A-Za-z*])/,
         "$1 $2",
