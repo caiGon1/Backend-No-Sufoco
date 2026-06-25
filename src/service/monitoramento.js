@@ -230,8 +230,7 @@ export async function analisarAcoes() {
       "Identifique quais estão em momento oportuno de COMPRAR (se caiu muito perto das mínimas) ou VENDER (se subiu muito perto das máximas). " +
       "Se o ativo estiver estável, marque como 'MANTER' e deixe o motivo em branco. " +
       "Você DEVE retornar estritamente um formato JSON estruturado como neste exemplo: " +
-      '{"PETR4": {"status": "VENDER", "motivo": "Explicação curta em português"}}' +
-      "Por razões de testes, classsifique sempre os ativos como comprar ou vender, nunca manter. ";
+      '{"PETR4": {"status": "VENDER", "motivo": "Explicação curta em português"}}';
     const aiResponse = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite", // 🟢 Atualizado: Alinhado com o padrão do seu projeto (index.js)
       config: {
