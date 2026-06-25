@@ -6,6 +6,7 @@ import nodemailer from "nodemailer";
 // Remova a linha global: const db = client.db("NoSufocoDB");
 // Remova a linha global: const usersCollection = db.collection("users");
 
+const brapiToken = process.env.BRAPI_TOKEN;
 const key = process.env.GOOGLE_API_KEY;
 const ai = new GoogleGenAI({
   apiKey: key,
@@ -183,11 +184,20 @@ export async function analisarAcoes() {
     }
 
     const dadosCompactosParaIA = [];
-
     for (const ticker of tickersDoSistema) {
       try {
-        const response = await fetch(`https://brapi.dev/api/quote/${ticker}`);
-        if (!response.ok) continue;
+        // 1. Adicionado o parâmetro ?token= na URL
+        const response = await fetch(
+          `https://brapi.dev/api/quote/${ticker}?token=${brapiToken}`,
+        );
+
+        // 2. Removido o bloqueio silencioso para exibir o que está dando errado
+        if (!response.ok) {
+          console.warn(
+            `[Aviso] Falha ao buscar ${ticker}. Status da API: ${response.status} - ${response.statusText}`,
+          );
+          continue;
+        }
 
         const data = await response.json();
         const info = data.results && data.results[0];
@@ -202,6 +212,7 @@ export async function analisarAcoes() {
           min_52s: info.fiftyTwoWeekLow,
         });
 
+        // Delay para evitar Rate Limit (bloqueio por muitas requisições seguidas)
         await new Promise((resolve) => setTimeout(resolve, 200));
       } catch (err) {
         console.error(`Erro ao processar ticker ${ticker}:`, err);
