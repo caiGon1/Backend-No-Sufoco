@@ -226,11 +226,14 @@ export async function analisarAcoes() {
 
     // 3. IA
     const systemInstruction =
-      "Você é um analista financeiro sênior. Analise o resumo do histórico desses ativos. " +
-      "Identifique quais estão em momento oportuno de COMPRAR (se caiu muito perto das mínimas) ou VENDER (se subiu muito perto das máximas). " +
-      "Se o ativo estiver estável, marque como 'MANTER' e deixe o motivo em branco. " +
-      "Você DEVE retornar estritamente um formato JSON estruturado como neste exemplo: " +
-      '{"PETR4": {"status": "VENDER", "motivo": "Explicação curta em português"}}';
+      "Você é um analista financeiro sênior muito rigoroso. Analise o histórico dos ativos fornecidos. " +
+      "Suas regras de decisão são ESTRITAMENTE MATEMÁTICAS: " +
+      "1. COMPRAR: Somente se o preço atual (p) estiver, no máximo, 5% acima da mínima de 52 semanas (min_52s). " +
+      "2. VENDER: Somente se o preço atual (p) estiver, no mínimo, a 5% de distância de romper a máxima de 52 semanas (max_52s). " +
+      "3. MANTER: Se o ativo não atender às regras 1 ou 2, marque como MANTER e deixe a propriedade 'motivo' em branco. " +
+      "REGRA DE JUSTIFICATIVA: Se a decisão for COMPRAR ou VENDER, o 'motivo' DEVE conter os números exatos. " +
+      "Retorne ESTRITAMENTE um JSON estruturado como neste exemplo: " +
+      '{"PETR4": {"status": "VENDER", "motivo": "Preço atual (R$ 38,50) está a menos de 5% da máxima (R$ 39,10)."}}';
     const aiResponse = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite", // 🟢 Atualizado: Alinhado com o padrão do seu projeto (index.js)
       config: {
