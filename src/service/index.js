@@ -489,6 +489,7 @@ Analise as transações acima e forneça:
 - Um resumo financeiro curto
 - Possíveis excessos de gastos
 - Dicas simples de melhoria financeira
+- Dicas de aonde o dinheiro possa ser investido de forma mais inteligente
 
 IMPORTANTE:
 - Resposta curta
