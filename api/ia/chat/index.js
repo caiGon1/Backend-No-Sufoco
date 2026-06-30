@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import cors from "../../../middleware/cors";
 
 const key = process.env.GOOGLE_API_KEY;
 
@@ -6,25 +7,13 @@ const ai = new GoogleGenAI({
   apiKey: key,
 });
 
-const allowedOrigins = ["https://no-sufoco.vercel.app", "http://localhost:5173"];
-  const origin = req.headers.origin;
-  
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-  }
-  
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-
-  // Resposta rápida para o Preflight (OPTIONS)
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
 export async function POST(req) {
+  if (cors(req, res)) return;
+
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
   try {
     const { message } = await req.json();
     if (!message) {
