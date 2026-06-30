@@ -47,7 +47,7 @@ export async function POST(req) {
 
     // 2. Chama a API do Gemini gerando o stream real diretamente passando o histórico
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-2.5-flash", 
+      model: "gemini-3.1-flash-lite", 
       contents: geminiContents, // 👈 Agora a IA recebe toda a conversa!
       config: {
         systemInstruction: `Você é um especialista financeiro focado em ações e banking. 
