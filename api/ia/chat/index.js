@@ -7,7 +7,7 @@ const ai = new GoogleGenAI({
 
 // Helper simples para os headers de CORS nativos
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://localhost:5173", // Ou "*" se quiser liberar geral
+  "Access-Control-Allow-Origin": "*", // Ou "*" se quiser liberar geral
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
