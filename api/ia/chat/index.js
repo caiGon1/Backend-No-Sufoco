@@ -22,19 +22,33 @@ export async function OPTIONS() {
 
 export async function POST(req) {
   try {
-    const { message } = await req.json();
-    if (!message) {
-      console.error("Mensagem não fornecida na requisição POST /api/ia/chat");
-      return new Response("Mensagem não fornecida.", { 
+    // 💡 Alterado para receber o 'history' enviado pelo adapter do @mui/x-chat
+    const { history } = await req.json();
+    
+    if (!history || history.length === 0) {
+      console.error("Histórico de mensagens não fornecido na requisição POST /api/ia/chat");
+      return new Response("Histórico de mensagens não fornecido.", { 
         status: 400, 
         headers: corsHeaders 
       });
     }
 
-    // 2. Chama a API do Gemini gerando o stream real diretamente
+    // 💡 Traduz o histórico vindo do Material-UI para o formato aceito pelo Gemini
+    const geminiContents = history.map((msg) => {
+      // O @mui/x-chat usa 'user' e 'assistant'. O Gemini exige 'user' e 'model'.
+      const role = msg.role === "user" ? "user" : "model";
+      
+      return {
+        role: role,
+        // Captura o texto mapeando a estrutura exata do objeto do MUI
+        parts: [{ text: msg.parts[0].text }],
+      };
+    });
+
+    // 2. Chama a API do Gemini gerando o stream real diretamente passando o histórico
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-2.5-flash", // Dica: mudei para o 2.5-flash padrão que é o modelo atual e estável
-      contents: message,
+      model: "gemini-2.5-flash", 
+      contents: geminiContents, // 👈 Agora a IA recebe toda a conversa!
       config: {
         systemInstruction: `Você é um especialista financeiro focado em ações e banking. 
 As suas regras são:
@@ -48,7 +62,7 @@ As suas regras são:
     // 3. Monta o ReadableStream para o envio em pedaços
     const stream = new ReadableStream({
       async start(controller) {
-        const encoder = new TextEncoder(); // Corrigido o erro de digitação 'enconder'
+        const encoder = new TextEncoder(); 
         try {
           for await (const chunk of responseStream) {
             if (chunk.text) {
