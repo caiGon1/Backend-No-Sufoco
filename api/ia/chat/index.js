@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+const { GoogleGenAI } = require("@google/genai");
 import cors from "../../../middleware/cors";
 
 const key = process.env.GOOGLE_API_KEY;
