@@ -24,6 +24,7 @@ export async function POST(req) {
   try {
     const { message } = await req.json();
     if (!message) {
+      console.error("Mensagem não fornecida na requisição POST /api/ia/chat");
       return new Response("Mensagem não fornecida.", { 
         status: 400, 
         headers: corsHeaders 
