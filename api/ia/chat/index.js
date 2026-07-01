@@ -5,14 +5,12 @@ const ai = new GoogleGenAI({
   apiKey: key,
 });
 
-// Helper simples para os headers de CORS nativos
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // Ou "*" se quiser liberar geral
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// 1. Responde à requisição obrigatória de Preflight (OPTIONS) do navegador
 export async function OPTIONS() {
   return new Response(null, {
     status: 204,
@@ -22,7 +20,6 @@ export async function OPTIONS() {
 
 export async function POST(req) {
   try {
-    // 💡 Alterado para receber o 'history' enviado pelo adapter do @mui/x-chat
     const { history } = await req.json();
     
     if (!history || history.length === 0) {
@@ -33,22 +30,19 @@ export async function POST(req) {
       });
     }
 
-    // 💡 Traduz o histórico vindo do Material-UI para o formato aceito pelo Gemini
     const geminiContents = history.map((msg) => {
-      // O @mui/x-chat usa 'user' e 'assistant'. O Gemini exige 'user' e 'model'.
       const role = msg.role === "user" ? "user" : "model";
       
       return {
         role: role,
-        // Captura o texto mapeando a estrutura exata do objeto do MUI
         parts: [{ text: msg.parts[0].text }],
       };
     });
 
-    // 2. Chama a API do Gemini gerando o stream real diretamente passando o histórico
+
     const responseStream = await ai.models.generateContentStream({
       model: "gemini-3.1-flash-lite", 
-      contents: geminiContents, // 👈 Agora a IA recebe toda a conversa!
+      contents: geminiContents, 
       config: {
         systemInstruction: `Você é um especialista financeiro focado em ações e banking. 
 As suas regras são:
@@ -59,7 +53,7 @@ As suas regras são:
       },
     });
 
-    // 3. Monta o ReadableStream para o envio em pedaços
+
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder(); 
@@ -77,7 +71,6 @@ As suas regras são:
       },
     });
 
-    // 4. Retorna a resposta combinando os headers de Stream e os headers de CORS
     return new Response(stream, {
       headers: {
         ...corsHeaders,
