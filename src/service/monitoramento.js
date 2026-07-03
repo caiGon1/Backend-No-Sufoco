@@ -184,45 +184,44 @@ export async function analisarAcoes() {
     }
 
     const dadosCompactosParaIA = [];
-   for (const ticker of tickersDoSistema) {
-  try {
-    // 1. Chamando a cotação JÁ SOLICITANDO os dados fundamentalistas na mesma URL
-    const response = await fetch(
-      `https://brapi.dev/api/quote/${ticker}?fundamental=true&token=${brapiToken}`,
-    );
+    for (const ticker of tickersDoSistema) {
+      try {
+        // 1. Chamando a cotação JÁ SOLICITANDO os dados fundamentalistas na mesma URL
+        const response = await fetch(
+          `https://brapi.dev/api/quote/${ticker}?fundamental=true&token=${brapiToken}`,
+        );
 
-    if (!response.ok) {
-      console.warn(
-        `[Aviso] Falha ao buscar ${ticker}. Status da API: ${response.status} - ${response.statusText}`,
-      );
-      continue;
+        if (!response.ok) {
+          console.warn(
+            `[Aviso] Falha ao buscar ${ticker}. Status da API: ${response.status} - ${response.statusText}`,
+          );
+          continue;
+        }
+
+        const data = await response.json();
+        const info = data.results && data.results[0];
+
+        if (!info) continue;
+
+        // 2. Extraindo os dados do objeto unificado da Brapi
+        // Nota: A Brapi costuma retornar esses campos como 'peRatio' e 'priceToBook' dentro de info
+        dadosCompactosParaIA.push({
+          t: info.symbol,
+          p: info.regularMarketPrice,
+          v_1d: `${info.regularMarketChangePercent?.toFixed(2)}%`,
+          max_52s: info.fiftyTwoWeekHigh,
+          min_52s: info.fiftyTwoWeekLow,
+
+          // Mapeamento correto com base no JSON real da Brapi:
+          pl_atual: info.priceEarnings || null, // P/L capturado de 'priceEarnings'
+        });
+
+        // Como voltamos a fazer apenas 1 requisição por ticker, pode manter o delay baixo
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      } catch (err) {
+        console.error(`Erro ao processar ticker ${ticker}:`, err);
+      }
     }
-
-    const data = await response.json();
-    const info = data.results && data.results[0];
-
-    if (!info) continue;
-
-    // 2. Extraindo os dados do objeto unificado da Brapi
-    // Nota: A Brapi costuma retornar esses campos como 'peRatio' e 'priceToBook' dentro de info
-    dadosCompactosParaIA.push({
-      t: info.symbol,
-      p: info.regularMarketPrice,
-      v_1d: `${info.regularMarketChangePercent?.toFixed(2)}%`,
-      max_52s: info.fiftyTwoWeekHigh,
-      min_52s: info.fiftyTwoWeekLow,
-      
-      // Mapeamento direto do endpoint /quote?fundamental=true
-      pl_atual: info.peRatio || null,
-      p_vp: info.priceToBook || null
-    });
-
-    // Como voltamos a fazer apenas 1 requisição por ticker, pode manter o delay baixo
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  } catch (err) {
-    console.error(`Erro ao processar ticker ${ticker}:`, err);
-  }
-}
 
     if (dadosCompactosParaIA.length === 0) {
       console.log("Não foi possível buscar os dados da API.");
@@ -230,16 +229,16 @@ export async function analisarAcoes() {
     }
 
     // 3. IA
-const systemInstruction =
-  "Você é um analista quantitativo de investimentos. Analise os dados dos ativos fornecidos. " +
-  "Suas regras de decisão combinam o histórico de preço de 52 semanas com indicadores de Valuation e Momentum: " +
-  "1. COMPRAR: Somente se o preço atual (p) estiver no máximo 7% acima da mínima de 52s (min_52s) E o P/L (Preço/Lucro) atual for MENOR que a média histórica de 5 anos do ativo. " +
-  "2. VENDER: Somente se o preço atual (p) estiver a menos de 5% de romper a máxima de 52s (max_52s) E o IFR/RSI (14 dias) estiver ACIMA de 75 (indicação de topo/sobrecompra). " +
-  "3. MANTER: Se o ativo não atender simultaneamente aos critérios das regras 1 ou 2. " +
-  "REGRA DE JUSTIFICATIVA: Se a decisão for COMPRAR ou VENDER, a propriedade 'motivo' deve conter os números exatos e os indicadores que dispararam o gatilho. " +
-  "Retorne ESTRITAMENTE um JSON estruturado como neste exemplo: " +
-      '{"MGLU3": {"status": "MANTER", "motivo": ""}}';
-    
+    const systemInstruction =
+      "Você é um analista de investimentos quantitativo e muito rigoroso. Analise o histórico dos ativos fornecidos. " +
+      "Suas regras de decisão combinam preço com fundamentos (Múltiplo P/L): " +
+      "1. COMPRAR: Somente se o preço atual (p) estiver, no máximo, 7% acima da mínima de 52 semanas (min_52s) E o P/L atual (pl_atual) for menor que 10.0. " +
+      "2. VENDER: Somente se o preço atual (p) estiver a menos de 5% de romper a máxima de 52 semanas (max_52s). " +
+      "3. MANTER: Se o ativo não atender simultaneamente às regras 1 ou 2. " +
+      "REGRA DE JUSTIFICATIVA: Se a decisão for COMPRAR ou VENDER, o 'motivo' DEVE conter os números exatos e os indicadores ponderados. " +
+      "Retorne ESTRITAMENTE um JSON estruturado como neste exemplo: " +
+      '{"BBDC4": {"status": "MANTER", "motivo": ""}}';
+
     const aiResponse = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite", // 🟢 Atualizado: Alinhado com o padrão do seu projeto (index.js)
       config: {
@@ -300,6 +299,7 @@ const systemInstruction =
     );
     console.log("De email:", process.env.GMAIL_USER);
     console.log("Rotina finalizada e e-mails disparados com sucesso.");
+    console.log("Dados enviados para a IA:", JSON.stringify(dadosCompactosParaIA, null, 2));
   } catch (error) {
     console.error("Erro crítico na execução da rotina:", error);
   }
