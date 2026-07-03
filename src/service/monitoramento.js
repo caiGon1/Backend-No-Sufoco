@@ -184,40 +184,61 @@ export async function analisarAcoes() {
     }
 
     const dadosCompactosParaIA = [];
-    for (const ticker of tickersDoSistema) {
-      try {
-        // 1. Adicionado o parâmetro ?token= na URL
-        const response = await fetch(
-          `https://brapi.dev/api/quote/${ticker}?token=${brapiToken}`,
-        );
+   for (const ticker of tickersDoSistema) {
+  try {
+    const response = await fetch(
+      `https://brapi.dev/api/quote/${ticker}?token=${brapiToken}`,
+    );
 
-        // 2. Removido o bloqueio silencioso para exibir o que está dando errado
-        if (!response.ok) {
-          console.warn(
-            `[Aviso] Falha ao buscar ${ticker}. Status da API: ${response.status} - ${response.statusText}`,
-          );
-          continue;
-        }
-
-        const data = await response.json();
-        const info = data.results && data.results[0];
-
-        if (!info) continue;
-
-        dadosCompactosParaIA.push({
-          t: info.symbol,
-          p: info.regularMarketPrice,
-          v_1d: `${info.regularMarketChangePercent?.toFixed(2)}%`,
-          max_52s: info.fiftyTwoWeekHigh,
-          min_52s: info.fiftyTwoWeekLow,
-        });
-
-        // Delay para evitar Rate Limit (bloqueio por muitas requisições seguidas)
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      } catch (err) {
-        console.error(`Erro ao processar ticker ${ticker}:`, err);
-      }
+    if (!response.ok) {
+      console.warn(
+        `[Aviso] Falha ao buscar cotação de ${ticker}. Status: ${response.status} - ${response.statusText}`,
+      );
+      continue;
     }
+
+    const data = await response.json();
+    const info = data.results && data.results[0];
+
+    if (!info) continue;
+    let pl_atual = null;
+    let p_vp = null;
+
+    try {
+      const statsResponse = await fetch(
+        `https://brapi.dev/api/v2/stocks/statistics?symbols=${ticker}&mode=current&modules=financialData&token=${brapiToken}`
+      );
+
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json();
+        const statsInfo = statsData.results && statsData.results[0];
+        
+        if (statsInfo) {
+          pl_atual = statsInfo.peRatio || null;
+          p_vp = statsInfo.priceToBook || null;
+        }
+      } else {
+        console.warn(`[Aviso] Falha ao buscar estatísticas para ${ticker}. Mantendo múltiplos nulos.`);
+      }
+    } catch (statsErr) {
+      console.error(`Erro ao buscar estatísticas do ticker ${ticker}:`, statsErr);
+
+    }
+    dadosCompactosParaIA.push({
+      t: info.symbol,
+      p: info.regularMarketPrice,
+      v_1d: `${info.regularMarketChangePercent?.toFixed(2)}%`,
+      max_52s: info.fiftyTwoWeekHigh,
+      min_52s: info.fiftyTwoWeekLow,
+      pl_atual: pl_atual,
+      p_vp: p_vp
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    
+  } catch (err) {
+    console.error(`Erro ao processar ticker ${ticker}:`, err);
+  }
+}
 
     if (dadosCompactosParaIA.length === 0) {
       console.log("Não foi possível buscar os dados da API.");
@@ -225,15 +246,16 @@ export async function analisarAcoes() {
     }
 
     // 3. IA
-    const systemInstruction =
-      "Você é um analista financeiro sênior muito rigoroso. Analise o histórico dos ativos fornecidos. " +
-      "Suas regras de decisão são ESTRITAMENTE MATEMÁTICAS: " +
-      "1. COMPRAR: Somente se o preço atual (p) estiver, no máximo, 5% acima da mínima de 52 semanas (min_52s). " +
-      "2. VENDER: Somente se o preço atual (p) estiver, no mínimo, a 5% de distância de romper a máxima de 52 semanas (max_52s). " +
-      "3. MANTER: Se o ativo não atender às regras 1 ou 2, marque como MANTER e deixe a propriedade 'motivo' em branco. " +
-      "REGRA DE JUSTIFICATIVA: Se a decisão for COMPRAR ou VENDER, o 'motivo' DEVE conter os números exatos. " +
-      "Retorne ESTRITAMENTE um JSON estruturado como neste exemplo: " +
-      '{"PETR4": {"status": "VENDER", "motivo": "Preço atual (R$ 38,50) está a menos de 5% da máxima (R$ 39,10)."}}';
+const systemInstruction =
+  "Você é um analista quantitativo de investimentos. Analise os dados dos ativos fornecidos. " +
+  "Suas regras de decisão combinam o histórico de preço de 52 semanas com indicadores de Valuation e Momentum: " +
+  "1. COMPRAR: Somente se o preço atual (p) estiver no máximo 7% acima da mínima de 52s (min_52s) E o P/L (Preço/Lucro) atual for MENOR que a média histórica de 5 anos do ativo. " +
+  "2. VENDER: Somente se o preço atual (p) estiver a menos de 5% de romper a máxima de 52s (max_52s) E o IFR/RSI (14 dias) estiver ACIMA de 75 (indicação de topo/sobrecompra). " +
+  "3. MANTER: Se o ativo não atender simultaneamente aos critérios das regras 1 ou 2. " +
+  "REGRA DE JUSTIFICATIVA: Se a decisão for COMPRAR ou VENDER, a propriedade 'motivo' deve conter os números exatos e os indicadores que dispararam o gatilho. " +
+  "Retorne ESTRITAMENTE um JSON estruturado como neste exemplo: " +
+      '{"MGLU3": {"status": "MANTER", "motivo": ""}}';
+    
     const aiResponse = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite", // 🟢 Atualizado: Alinhado com o padrão do seu projeto (index.js)
       config: {
