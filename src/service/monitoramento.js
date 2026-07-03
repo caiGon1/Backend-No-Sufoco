@@ -186,13 +186,14 @@ export async function analisarAcoes() {
     const dadosCompactosParaIA = [];
    for (const ticker of tickersDoSistema) {
   try {
+    // 1. Chamando a cotação JÁ SOLICITANDO os dados fundamentalistas na mesma URL
     const response = await fetch(
-      `https://brapi.dev/api/quote/${ticker}?token=${brapiToken}`,
+      `https://brapi.dev/api/quote/${ticker}?fundamental=true&token=${brapiToken}`,
     );
 
     if (!response.ok) {
       console.warn(
-        `[Aviso] Falha ao buscar cotação de ${ticker}. Status: ${response.status} - ${response.statusText}`,
+        `[Aviso] Falha ao buscar ${ticker}. Status da API: ${response.status} - ${response.statusText}`,
       );
       continue;
     }
@@ -201,40 +202,23 @@ export async function analisarAcoes() {
     const info = data.results && data.results[0];
 
     if (!info) continue;
-    let pl_atual = null;
-    let p_vp = null;
 
-    try {
-      const statsResponse = await fetch(
-        `https://brapi.dev/api/v2/stocks/statistics?symbols=${ticker}&mode=current&modules=financialData&token=${brapiToken}`
-      );
-
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        const statsInfo = statsData.results && statsData.results[0];
-        
-        if (statsInfo) {
-          pl_atual = statsInfo.peRatio || null;
-          p_vp = statsInfo.priceToBook || null;
-        }
-      } else {
-        console.warn(`[Aviso] Falha ao buscar estatísticas para ${ticker}. Mantendo múltiplos nulos.`);
-      }
-    } catch (statsErr) {
-      console.error(`Erro ao buscar estatísticas do ticker ${ticker}:`, statsErr);
-
-    }
+    // 2. Extraindo os dados do objeto unificado da Brapi
+    // Nota: A Brapi costuma retornar esses campos como 'peRatio' e 'priceToBook' dentro de info
     dadosCompactosParaIA.push({
       t: info.symbol,
       p: info.regularMarketPrice,
       v_1d: `${info.regularMarketChangePercent?.toFixed(2)}%`,
       max_52s: info.fiftyTwoWeekHigh,
       min_52s: info.fiftyTwoWeekLow,
-      pl_atual: pl_atual,
-      p_vp: p_vp
+      
+      // Mapeamento direto do endpoint /quote?fundamental=true
+      pl_atual: info.peRatio || null,
+      p_vp: info.priceToBook || null
     });
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    
+
+    // Como voltamos a fazer apenas 1 requisição por ticker, pode manter o delay baixo
+    await new Promise((resolve) => setTimeout(resolve, 200));
   } catch (err) {
     console.error(`Erro ao processar ticker ${ticker}:`, err);
   }
