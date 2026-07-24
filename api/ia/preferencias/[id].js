@@ -1,6 +1,6 @@
 import clientPromise from "../../../lib/mongodb";
 import { descriptografar, criptografar } from "../../../middleware/crypto";
-import { verifyToken } from "../../../lib/auth";
+import { verifyToken } from "../../../middleware/authentication";
 import { ObjectId } from "mongodb";
 import crypto from "crypto";
 
