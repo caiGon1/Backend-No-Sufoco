@@ -1,6 +1,7 @@
 import clientPromise from "../../../lib/mongodb";
 import { descriptografar, criptorafrar } from "../../../middleware/crypto"; // Atente-se ao typo da importação
 import { verifyToken } from "../../../lib/auth";
+import cors from "../../middleware/cors";
 import { ObjectId } from "mongodb";
 import crypto from "crypto";
 
@@ -16,21 +17,10 @@ function gerarHash(texto) {
 }
 
 export default async function handler(req, res) {
-  const allowedOrigins = ["https://no-sufoco.vercel.app/dashboard", "http://localhost:5173/dashboard"];
-  const origin = req.headers.origin;
-
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-  }
-
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+  if (cors(req, res)) return;
 
   if (req.method === "OPTIONS") {
-    return res.status(200).end();
+    return res.status(204).end();
   }
 
   const client = await clientPromise;
