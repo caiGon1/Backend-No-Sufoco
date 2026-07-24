@@ -1,7 +1,6 @@
 import clientPromise from "../../lib/mongodb";
-import { descriptografar, criptorafrar } from "../../middleware/crypto"; // Atente-se ao typo da importação
+import { descriptografar, criptorafrar } from "../../middleware/crypto";
 import { verifyToken } from "../../lib/auth";
-import cors from "../../middleware/cors";
 import { ObjectId } from "mongodb";
 import crypto from "crypto";
 
@@ -17,12 +16,30 @@ function gerarHash(texto) {
 }
 
 export default async function handler(req, res) {
-  if (cors(req, res)) return;
+  // =========================================================================
+  // 1. CONFIGURAÇÃO EXPLÍCITA DE CORS (Bloqueia o erro de Preflight)
+  // =========================================================================
+  const allowedOrigins = ["https://no-sufoco.vercel.app", "http://localhost:5173"];
+  const origin = req.headers.origin;
 
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
   }
 
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  // O navegador dispara um OPTIONS antes do POST. Precisamos responder 200 OK.
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  // =========================================================================
+  // 2. LÓGICA PRINCIPAL DO BANCO DE DADOS
+  // =========================================================================
   const client = await clientPromise;
   const db = client.db("NoSufocoDB");
   const usersCollection = db.collection("users");
@@ -30,12 +47,10 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
-      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
       return res.status(401).json({ error: "Unauthorized: Invalid or missing token" });
     }
 
     const userId = req.user?.id || decodedUser.id;
-
     const { alteracoes } = req.body;
 
     if (!alteracoes || !Array.isArray(alteracoes) || alteracoes.length === 0) {
@@ -46,16 +61,15 @@ export default async function handler(req, res) {
       for (const alteracao of alteracoes) {
         const { uuid, nome, categoria } = alteracao;
 
-        // 1. Processamento e Limpeza
+        // Processamento e Limpeza
         const termoLimpo = normalizarTermo(nome);
         const termHash = gerarHash(termoLimpo);
 
-        // 2. Criptografia dos dados novos
+        // Criptografia
         const termoCriptografado = criptorafrar(termoLimpo);
         const categoriaCriptografada = criptorafrar(categoria);
 
-        // 3. Atualização A: Regra de Preferência (Dicionário por termHash)
-        // Salva a preferência usando o termHash como chave no objeto "preferencias"
+        // Atualização A: Regra de Preferência
         await usersCollection.updateOne(
           { _id: new ObjectId(userId) },
           {
@@ -69,8 +83,7 @@ export default async function handler(req, res) {
           }
         );
 
-        // 4. Atualização B: Transação específica no array de Períodos
-        // Atualiza a categoria da transação correspondente pelo uuid
+        // Atualização B: Transação específica no extrato
         await usersCollection.updateOne(
           { _id: new ObjectId(userId) },
           {
