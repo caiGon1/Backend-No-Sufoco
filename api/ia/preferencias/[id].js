@@ -17,18 +17,22 @@ function gerarHash(texto) {
 }
 
 export default async function handler(req, res) {
-
-
-  const allowedOrigins = ["https://no-sufoco.vercel.app", "http://localhost:5173"];
+  const allowedOrigins = [
+    "https://no-sufoco.vercel.app",
+    "http://localhost:5173",
+  ];
   const origin = req.headers.origin;
-  
+
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
     res.setHeader("Access-Control-Allow-Origin", "*");
   }
-  
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
@@ -37,13 +41,14 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-
   // 🟢 2. BLOCO TRY-CATCH GLOBAL PARA REQUISIÇÕES POST
   try {
     if (req.method === "POST") {
       const decodedUser = verifyToken(req);
       if (!decodedUser) {
-        return res.status(401).json({ error: "Unauthorized: Invalid or missing token" });
+        return res
+          .status(401)
+          .json({ error: "Unauthorized: Invalid or missing token" });
       }
 
       const { id } = req.query;
@@ -55,7 +60,11 @@ export default async function handler(req, res) {
 
       const { alteracoes } = req.body;
 
-      if (!alteracoes || !Array.isArray(alteracoes) || alteracoes.length === 0) {
+      if (
+        !alteracoes ||
+        !Array.isArray(alteracoes) ||
+        alteracoes.length === 0
+      ) {
         return res.status(400).json({ error: "Invalid request body" });
       }
 
@@ -83,15 +92,17 @@ export default async function handler(req, res) {
                 updatedAt: new Date(),
               },
             },
-          }
+          },
         );
 
         // Atualização no extrato pelo UUID da transação
-        await usersCollection.updateOne(
-          { _id: new ObjectId(userId) },
+        // Atualização no extrato pelo UUID da transação
+        const resultExtrato = await usersCollection.updateOne(
+          { _id: new ObjectId(userId), periodo: { $exists: true } },
           {
             $set: {
-              "periodo.$[p].transacoes.$[t].categoriaEncrypted": categoriaCriptografada,
+              "periodo.$[p].transacoes.$[t].categoriaEncrypted":
+                categoriaCriptografada,
               "periodo.$[p].transacoes.$[t].editadoManualmente": true,
             },
           },
@@ -100,8 +111,14 @@ export default async function handler(req, res) {
               { "p.transacoes": { $exists: true } },
               { "t.uuid": uuid },
             ],
-          }
+          },
         );
+
+        if (resultExtrato.matchedCount === 0) {
+          console.warn(
+            `Usuário ${userId} não possui campo 'periodo' ou transação com uuid ${uuid} não encontrada.`,
+          );
+        }
       }
 
       return res.status(200).json({
@@ -110,7 +127,9 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(405).json({ status: "Erro", message: "Método não permitido." });
+    return res
+      .status(405)
+      .json({ status: "Erro", message: "Método não permitido." });
   } catch (error) {
     console.error("Erro fatal na API de preferências:", error);
     // Retorna JSON para o Axios conseguir ler a mensagem no lugar do erro de CORS
