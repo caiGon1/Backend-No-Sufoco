@@ -17,11 +17,26 @@ function gerarHash(texto) {
 }
 
 export default async function handler(req, res) {
-  // 🟢 1. TRATAMENTO IMEDIATO E INCONDICIONAL DO PREFLIGHT (OPTIONS)
-  // Responde 200 OK no topo absoluto do handler sem encostar em banco ou token
+
+
+  const allowedOrigins = ["https://no-sufoco.vercel.app", "http://localhost:5173"];
+  const origin = req.headers.origin;
+  
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  // Resposta rápida para o Preflight (OPTIONS)
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
+
 
   // 🟢 2. BLOCO TRY-CATCH GLOBAL PARA REQUISIÇÕES POST
   try {
