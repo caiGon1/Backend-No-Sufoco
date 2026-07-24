@@ -19,6 +19,50 @@ export const config = {
   },
 };
 
+// =========================================================================
+// 🛠️ FUNÇÕES DE NORMALIZAÇÃO (BUG 1 E BUG 2 FIXES)
+// =========================================================================
+
+// 🐛 BUG 1 FIX: Função única e centralizada para normalizar meses e anos.
+function normalizarMesAno(mesAnoStr) {
+  if (!mesAnoStr) return "0/0000";
+  let str = String(mesAnoStr).trim();
+  if (str.includes("-")) str = str.replace("-", "/");
+  const partes = str.split("/");
+  if (partes.length === 2) {
+    const mes = parseInt(partes[0], 10) || 0;
+    const ano = partes[1] === "0000" ? "0000" : partes[1];
+    str = `${mes}/${ano}`; // Remove zero à esquerda do mês garantidamente
+  }
+  return str;
+}
+
+// 🐛 BUG 2 FIX: Funções para normalizar todos os campos que formam a chave da transação
+function normalizarValor(valor) {
+  const n = typeof valor === "string" ? parseFloat(valor.replace(",", ".")) : valor;
+  return isNaN(n) ? "0.00" : n.toFixed(2);
+}
+
+function normalizarTexto(texto) {
+  return String(texto || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .replace(/\s+/g, " "); // remove múltiplos espaços seguidos
+}
+
+function normalizarData(data) {
+  return String(data || "").trim().replace(/-/g, "/");
+}
+
+function gerarChaveTransacao(mesAno, data, descricao, valor) {
+  return `${mesAno}-${normalizarData(data)}-${normalizarTexto(descricao)}-${normalizarValor(valor)}`;
+}
+
+// =========================================================================
+// 🚀 HANDLER PRINCIPAL
+// =========================================================================
+
 export default async function handler(req, res) {
   // 1. Executa o middleware de CORS atualizado
   if (cors(req, res)) return;
@@ -112,16 +156,8 @@ export default async function handler(req, res) {
       const periodosCorrigidosMap = {};
 
       (resposta.periodos || []).forEach((p) => {
-        let mesAnoStr = p.mesAno || "0/0000";
-
-        if (mesAnoStr.includes("-")) {
-          mesAnoStr = mesAnoStr.replace("-", "/");
-        }
-
-        const partes = mesAnoStr.split("/");
-        if (partes.length === 2 && partes[1] !== "0000") {
-          mesAnoStr = `${parseInt(partes[0], 10)}/${partes[1]}`;
-        }
+        // 🐛 BUG 1 FIX: Usa a função de normalização limpa
+        const mesAnoStr = normalizarMesAno(p.mesAno);
 
         if (!periodosCorrigidosMap[mesAnoStr]) {
           periodosCorrigidosMap[mesAnoStr] = {
@@ -144,9 +180,13 @@ export default async function handler(req, res) {
       const chavesExistentes = new Set();
 
       periodosDoBanco.forEach((p) => {
+        // Fallback caso mesAno não exista (dados antigos)
         if (!p.mesAno && p.mes && p.ano) {
           p.mesAno = `${p.mes}/${p.ano}`;
         }
+        
+        // 🐛 BUG 1 FIX: Normalizamos o período direto no array em memória para uso contínuo
+        p.mesAno = normalizarMesAno(p.mesAno);
         const periodoChave = p.mesAno;
 
         (p.transacoes || []).forEach((t) => {
@@ -155,16 +195,25 @@ export default async function handler(req, res) {
               const objDescriptografado = JSON.parse(
                 descriptografar(t.dadosCriptografados),
               );
+              
+              // 🐛 BUG 2 FIX: Utilizando gerarChaveTransacao para padronizar
               chavesExistentes.add(
-                `${periodoChave}-${objDescriptografado.data}-${objDescriptografado.descricao}-${objDescriptografado.valor}`,
+                gerarChaveTransacao(
+                  periodoChave, 
+                  objDescriptografado.data, 
+                  objDescriptografado.descricao, 
+                  objDescriptografado.valor
+                )
               );
             } else {
               const dataDesc = descriptografar(t.data) || "";
               const descDesc = descriptografar(t.descricao) || "";
               const valorDesc =
                 t.valor !== undefined ? String(descriptografar(t.valor)) : "";
+              
+              // 🐛 BUG 2 FIX: Utilizando gerarChaveTransacao para padronizar  
               chavesExistentes.add(
-                `${periodoChave}-${dataDesc}-${descDesc}-${valorDesc}`,
+                gerarChaveTransacao(periodoChave, dataDesc, descDesc, valorDesc)
               );
             }
           } catch (err) {
@@ -179,18 +228,20 @@ export default async function handler(req, res) {
       let houveNovasTransacoes = false;
 
       resposta.periodos.forEach((periodoNovo) => {
+        // Já foi normalizado no bloco REAGRUPAMENTO
         const stringMesAno = periodoNovo.mesAno;
 
+        // 🐛 BUG 1 FIX: Como as propriedades estão devidamente normalizadas em ambos lados, 
+        // a comparação simples resolverá 100% dos casos de duplicidade de mês.
         let periodoExistenteNoBanco = periodosDoBanco.find(
-          (p) =>
-            p.mesAno === stringMesAno ||
-            (p.mes === parseInt(stringMesAno.split("/")[0]) &&
-              p.ano === parseInt(stringMesAno.split("/")[1])),
+          (p) => p.mesAno === stringMesAno
         );
 
         const transacoesIneditas = (periodoNovo.transacoes || []).filter(
           (t) => {
-            const chaveNova = `${stringMesAno}-${t.data}-${t.descricao}-${t.valor}`;
+            // 🐛 BUG 2 FIX: Verificamos contra o Banco usando a mesma chave formatada 
+            // livre de case-sensitivity, acentos e espaços não determinísticos
+            const chaveNova = gerarChaveTransacao(stringMesAno, t.data, t.descricao, t.valor);
             return !chavesExistentes.has(chaveNova);
           },
         );
@@ -211,8 +262,9 @@ export default async function handler(req, res) {
                 parcelaTratada = { eParcela: false };
               }
             }
-            
-            // 2️⃣ GERAÇÃO DO UUID
+            //----------------------------------------------------------------------
+            // GERAÇÃO DO UUID
+            //----------------------------------------------------------------------
             const transacaoUuid = crypto.randomUUID();
 
             const transacaoTratada = {
@@ -238,6 +290,7 @@ export default async function handler(req, res) {
             if (!periodoExistenteNoBanco.transacoes) {
               periodoExistenteNoBanco.transacoes = [];
             }
+            // Atualizamos a string normalizada apenas por segurança
             periodoExistenteNoBanco.mesAno = stringMesAno;
             periodoExistenteNoBanco.transacoes.push(
               ...transacoesCriptografadas,
