@@ -10,6 +10,9 @@ import { verifyToken } from "../../middleware/authentication.js";
 import fs from "fs";
 import cors from "../../middleware/cors.js";
 
+// 1️⃣ IMPORTAÇÃO: Adicionado módulo crypto nativo do Node.js
+import crypto from "crypto"; 
+
 export const config = {
   api: {
     bodyParser: false,
@@ -69,8 +72,39 @@ export default async function handler(req, res) {
         });
       }
 
+      // =========================================================================
+      // 🧠 BUSCA DE PREFERÊNCIAS DO USUÁRIO (APRENDIZADO PARA A IA)
+      // =========================================================================
+      const usuarioAtual = await db
+        .collection("users")
+        .findOne(
+          { _id: new ObjectId(id) }, 
+          { projection: { periodos: 1, preferencias: 1 } }
+        );
+
+      let preferenciasFormatadas = "";
+
+      if (usuarioAtual && usuarioAtual.preferencias) {
+        const listaPref = Object.values(usuarioAtual.preferencias);
+
+        preferenciasFormatadas = listaPref
+          .map((pref) => {
+            try {
+              const termo = descriptografar(pref.termoLimpoEncrypted);
+              const cat = descriptografar(pref.categoriaEncrypted);
+              return `- "${termo}" categorizar como: ${cat}`;
+            } catch (err) {
+              return null;
+            }
+          })
+          .filter(Boolean)
+          .join("\n");
+      }
+
       const pdfBuffer = fs.readFileSync(arquivoForm.filepath);
-      const resposta = await extrairInformacoes(pdfBuffer, senha);
+      
+      // 🔄 Passa a string de preferências como 3º parâmetro
+      const resposta = await extrairInformacoes(pdfBuffer, senha, preferenciasFormatadas);
 
       // =========================================================================
       // 🛠️ REAGRUPAMENTO DETERMINÍSTICO (BLINDADO E FLEXÍVEL)
@@ -78,15 +112,12 @@ export default async function handler(req, res) {
       const periodosCorrigidosMap = {};
 
       (resposta.periodos || []).forEach((p) => {
-        // Pega o período principal da fatura que a IA detectou (ex: "05/2026")
         let mesAnoStr = p.mesAno || "0/0000";
 
-        // Padroniza formatação (ex: "05-2026" para "05/2026")
         if (mesAnoStr.includes("-")) {
           mesAnoStr = mesAnoStr.replace("-", "/");
         }
 
-        // Remove zeros à esquerda para alinhar com o formato salvo no banco (ex: "05/2026" -> "5/2026")
         const partes = mesAnoStr.split("/");
         if (partes.length === 2 && partes[1] !== "0000") {
           mesAnoStr = `${parseInt(partes[0], 10)}/${partes[1]}`;
@@ -99,8 +130,6 @@ export default async function handler(req, res) {
           };
         }
 
-        // Joga TODAS as transações deste extrato no mesmo período da fatura,
-        // mantendo as datas originais de cada compra intactas.
         (p.transacoes || []).forEach((t) => {
           periodosCorrigidosMap[mesAnoStr].transacoes.push(t);
         });
@@ -111,10 +140,6 @@ export default async function handler(req, res) {
       // =========================================================================
       // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE
       // =========================================================================
-      const usuarioAtual = await db
-        .collection("users")
-        .findOne({ _id: new ObjectId(id) }, { projection: { periodos: 1 } });
-
       let periodosDoBanco = usuarioAtual?.periodos || [];
       const chavesExistentes = new Set();
 
@@ -186,8 +211,12 @@ export default async function handler(req, res) {
                 parcelaTratada = { eParcela: false };
               }
             }
+            
+            // 2️⃣ GERAÇÃO DO UUID
+            const transacaoUuid = crypto.randomUUID();
 
             const transacaoTratada = {
+              uuid: transacaoUuid,
               data: t.data || "",
               descricao: t.descricao || "",
               valor: t.valor !== undefined ? t.valor : 0,
@@ -198,6 +227,7 @@ export default async function handler(req, res) {
             };
 
             return {
+              uuid: transacaoUuid, 
               dadosCriptografados: criptografar(
                 JSON.stringify(transacaoTratada),
               ),
@@ -301,9 +331,16 @@ export default async function handler(req, res) {
         .map((t) => {
           try {
             if (t.dadosCriptografados) {
-              return JSON.parse(descriptografar(t.dadosCriptografados));
+              const objDescriptografado = JSON.parse(descriptografar(t.dadosCriptografados));
+              
+              // 3️⃣ RETORNO DO GET: Garante que o UUID raiz seja passado de volta na listagem
+              return { 
+                uuid: t.uuid || objDescriptografado.uuid, 
+                ...objDescriptografado 
+              };
             }
             return {
+              uuid: t.uuid,
               data: descriptografar(t.data),
               descricao: descriptografar(t.descricao),
               valor: descriptografar(t.valor),

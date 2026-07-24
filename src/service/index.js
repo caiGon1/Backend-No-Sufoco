@@ -17,7 +17,6 @@ function higienizarTextoFatura(textoBruto) {
     .map((linha) => {
       let linhaTratada = linha.trim();
 
-
       linhaTratada = linhaTratada.replace(/^[1-3]\s+(\d{2}\/\d{2})/, "$1");
       linhaTratada = linhaTratada.replace(/^[1-3]\s+/, "");
       linhaTratada = linhaTratada.replace(
@@ -33,7 +32,16 @@ function higienizarTextoFatura(textoBruto) {
 // ======================================================
 // GERAÇÃO DINÂMICA DO PROMPT (TEXTO JÁ LIMPO)
 // ======================================================
-function gerarPrompt(textoDoExtrato, periodoPrincipal) {
+function gerarPrompt(
+  textoDoExtrato,
+  periodoPrincipal,
+  preferenciasDoUsuario = "",
+) {
+  // Bloco dinâmico: Só entra no prompt se o usuário tiver preferências salvas
+  const regrasPersonalizadas = preferenciasDoUsuario
+    ? `\n# PREFERÊNCIAS PERSONALIZADAS DO USUÁRIO (PRIORIDADE MÁXIMA)\nO usuário definiu regras específicas de categorização baseadas em correções passadas. Sempre que identificar uma transação correspondente (ou muito semelhante) aos itens abaixo, OBRIGATORIAMENTE aplique a categoria indicada:\n${preferenciasDoUsuario}\n`
+    : "";
+
   return `
 Você é um sistema especialista em conciliação bancária de ALTA PRECISÃO.
 
@@ -88,9 +96,9 @@ Nunca deduza parcelamentos. Nunca infira parcelamentos.
 * Utilize o ano presente em "${periodoPrincipal}".
 * Formato obrigatório: DD/MM/AAAA.
 * Não altere o mês original da transação.
-
-# REGRAS DE CATEGORIZAÇÃO
-Defina uma categoria coerente para cada transação (ex: academia, transporte, supermercado, alimentacao, farmacia, saude, vestuario). 
+${regrasPersonalizadas}
+# REGRAS GERAIS DE CATEGORIZAÇÃO
+Para as transações que NÃO estiverem nas preferências personalizadas acima, defina uma categoria coerente (ex: academia, transporte, supermercado, alimentacao, farmacia, saude, vestuario). 
 Utilize letras minúsculas e sem acentos.
 
 # REGRAS DE VALOR
@@ -106,7 +114,6 @@ Confirme TODOS os itens abaixo:
 Se qualquer item falhar: eParcela = false.
 `;
 }
-
 // ======================================================
 // FUNÇÃO AUXILIAR: FATIAMENTO DE TEXTO
 // ======================================================
@@ -320,37 +327,35 @@ async function chamarComRetry(fn, tentativas = 3, delayBase = 1500) {
 // ======================================================
 // EXTRAÇÃO DE TRANSAÇÕES
 // ======================================================
-export async function extrairInformacoes(pdfBuffer, senha) {
+export async function extrairInformacoes(
+  pdfBuffer,
+  senha,
+  preferenciasFormatadas = "",
+) {
   let textoDoExtrato = "";
   let textoLimpo = "";
 
   try {
     textoDoExtrato = await extrairTextoDePDF(pdfBuffer, senha);
-
-    // ✅ Aplica a limpeza das sujeiras do PDF imediatamente
     textoLimpo = higienizarTextoFatura(textoDoExtrato);
-
-    // 🔍 LOGS PARA INSPEÇÃO:
-    console.log("==================================================");
-    console.log(textoLimpo);
-    console.log("==================================================");
   } catch (error) {
     throw new Error(error.message);
   }
+
   const periodoFinal = detectarPeriodoPrincipal(textoLimpo);
-  console.log(`[Detector] Período unificado identificado: ${periodoFinal}`);
-
   const blocosDeTexto = quebrarTextoEmBlocos(textoLimpo, 120);
-  console.log(
-    `[Vercel Shield] Extrato processado em ${blocosDeTexto.length} bloco(s).`,
-  );
-
   const transacoesAcumuladas = [];
 
   try {
     for (let i = 0; i < blocosDeTexto.length; i++) {
       const bloco = blocosDeTexto[i];
-      const promptDinamico = gerarPrompt(bloco, periodoFinal);
+
+
+      const promptDinamico = gerarPrompt(
+        bloco,
+        periodoFinal,
+        preferenciasFormatadas,
+      );
 
       const response = await chamarComRetry(() =>
         ai.models.generateContent({
