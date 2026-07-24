@@ -1,6 +1,6 @@
-import clientPromise from "../../../lib/mongodb";
-import { descriptografar, criptorafrar } from "../../../middleware/crypto"; // Atente-se ao typo da importação
-import { verifyToken } from "../../../lib/auth";
+import clientPromise from "../../lib/mongodb";
+import { descriptografar, criptorafrar } from "../../middleware/crypto"; // Atente-se ao typo da importação
+import { verifyToken } from "../../lib/auth";
 import cors from "../../middleware/cors";
 import { ObjectId } from "mongodb";
 import crypto from "crypto";
