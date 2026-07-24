@@ -16,7 +16,7 @@ function gerarHash(texto) {
 }
 
 export default async function handler(req, res) {
-  const allowedOrigins = ["https://no-sufoco.vercel.app", "http://localhost:5173"];
+  const allowedOrigins = ["https://no-sufoco.vercel.app/dashboard", "http://localhost:5173/dashboard"];
   const origin = req.headers.origin;
 
   if (allowedOrigins.includes(origin)) {
