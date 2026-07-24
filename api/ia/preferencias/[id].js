@@ -98,12 +98,12 @@ export default async function handler(req, res) {
         // Atualização no extrato pelo UUID da transação
         // Atualização no extrato pelo UUID da transação
         const resultExtrato = await usersCollection.updateOne(
-          { _id: new ObjectId(userId), periodo: { $exists: true } },
+          { _id: new ObjectId(userId), periodos: { $exists: true } },
           {
             $set: {
-              "periodo.$[p].transacoes.$[t].categoriaEncrypted":
+              "periodos.$[p].transacoes.$[t].categoriaEncrypted":
                 categoriaCriptografada,
-              "periodo.$[p].transacoes.$[t].editadoManualmente": true,
+              "periodos.$[p].transacoes.$[t].editadoManualmente": true,
             },
           },
           {
