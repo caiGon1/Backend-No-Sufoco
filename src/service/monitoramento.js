@@ -240,7 +240,7 @@ export async function analisarAcoes() {
       '{"BBDC4": {"status": "MANTER", "motivo": ""}}';
 
     const aiResponse = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite", // 🟢 Atualizado: Alinhado com o padrão do seu projeto (index.js)
+      model: "gemini-3.5-flash-lite", // 🟢 Atualizado: Alinhado com o padrão do seu projeto (index.js)
       config: {
         systemInstruction: systemInstruction,
         responseMimeType: "application/json",
