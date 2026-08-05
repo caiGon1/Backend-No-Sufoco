@@ -67,6 +67,8 @@ Exemplo:
 * "03/03" = parcela
 * "68,64" = valor
 
+Caso o texto contenha "Compras no estabelecimento" ou "Compras em", considere que a descrição do estabelecimento começa APÓS essas palavras.
+
 # REGRA ABSOLUTA DE PARCELAMENTO (MUITO IMPORTANTE)
 
 Uma compra SOMENTE pode ser considerada parcelada quando existir explicitamente o padrão:
