@@ -41,7 +41,7 @@ export async function POST(req) {
 
 
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-3.1-flash-lite", 
+      model: "gemini-3.5-flash-lite", 
       contents: geminiContents, 
       config: {
         systemInstruction: `Você é um especialista financeiro focado em ações e banking. 
