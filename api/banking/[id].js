@@ -9,8 +9,6 @@ import formidable from "formidable";
 import { verifyToken } from "../../middleware/authentication.js";
 import fs from "fs";
 import cors from "../../middleware/cors.js";
-
-// 1️⃣ IMPORTAÇÃO: Adicionado módulo crypto nativo do Node.js
 import crypto from "crypto"; 
 
 export const config = {
@@ -20,10 +18,9 @@ export const config = {
 };
 
 // =========================================================================
-// 🛠️ FUNÇÕES DE NORMALIZAÇÃO (BUG 1 E BUG 2 FIXES)
+// FUNÇÕES DE NORMALIZAÇÃO
 // =========================================================================
 
-// 🐛 BUG 1 FIX: Função única e centralizada para normalizar meses e anos.
 function normalizarMesAno(mesAnoStr) {
   if (!mesAnoStr) return "0/0000";
   let str = String(mesAnoStr).trim();
@@ -32,12 +29,10 @@ function normalizarMesAno(mesAnoStr) {
   if (partes.length === 2) {
     const mes = parseInt(partes[0], 10) || 0;
     const ano = partes[1] === "0000" ? "0000" : partes[1];
-    str = `${mes}/${ano}`; // Remove zero à esquerda do mês garantidamente
+    str = `${mes}/${ano}`; 
   }
   return str;
 }
-
-// 🐛 BUG 2 FIX: Funções para normalizar todos os campos que formam a chave da transação
 function normalizarValor(valor) {
   const n = typeof valor === "string" ? parseFloat(valor.replace(",", ".")) : valor;
   return isNaN(n) ? "0.00" : n.toFixed(2);
@@ -47,27 +42,27 @@ function normalizarTexto(texto) {
   return String(texto || "")
     .trim()
     .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos
-    .replace(/\s+/g, " "); // remove múltiplos espaços seguidos
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
+    .replace(/\s*(?:-\s*)?\(?\b\d{1,2}\/\d{1,2}\b\)?/g, "")
+    .replace(/\bparcela\s+\d+\s+de\s+\d+\b/g, "")
+    .replace(/\s+/g, " ") 
+    .trim();
 }
 
 function normalizarData(data) {
   return String(data || "").trim().replace(/-/g, "/");
 }
 
-function gerarChaveTransacao(mesAno, data, descricao, valor) {
-  return `${mesAno}-${normalizarData(data)}-${normalizarTexto(descricao)}-${normalizarValor(valor)}`;
+function gerarChaveTransacao(data, descricao, valor) {
+  return `${normalizarData(data)}-${normalizarTexto(descricao)}-${normalizarValor(valor)}`;
 }
 
 // =========================================================================
-// 🚀 HANDLER PRINCIPAL
+// HANDLER PRINCIPAL
 // =========================================================================
 
 export default async function handler(req, res) {
-  // 1. Executa o middleware de CORS atualizado
   if (cors(req, res)) return;
-
-  // 2. Trava de segurança para requisições Preflight
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
@@ -75,7 +70,6 @@ export default async function handler(req, res) {
   const client = await clientPromise;
   const db = client.db("NoSufocoDB");
 
-  // --- MÉTODO POST: Upload, Extração e Mesclagem Inteligente ---
   if (req.method === "POST") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
@@ -117,7 +111,7 @@ export default async function handler(req, res) {
       }
 
       // =========================================================================
-      // 🧠 BUSCA DE PREFERÊNCIAS DO USUÁRIO (APRENDIZADO PARA A IA)
+      // BUSCA DE PREFERÊNCIAS DO USUÁRIO
       // =========================================================================
       const usuarioAtual = await db
         .collection("users")
@@ -146,17 +140,14 @@ export default async function handler(req, res) {
       }
 
       const pdfBuffer = fs.readFileSync(arquivoForm.filepath);
-      
-      // 🔄 Passa a string de preferências como 3º parâmetro
       const resposta = await extrairInformacoes(pdfBuffer, senha, preferenciasFormatadas);
 
       // =========================================================================
-      // 🛠️ REAGRUPAMENTO DETERMINÍSTICO (BLINDADO E FLEXÍVEL)
+      // REAGRUPAMENTO DETERMINÍSTICO
       // =========================================================================
       const periodosCorrigidosMap = {};
 
       (resposta.periodos || []).forEach((p) => {
-        // 🐛 BUG 1 FIX: Usa a função de normalização limpa
         const mesAnoStr = normalizarMesAno(p.mesAno);
 
         if (!periodosCorrigidosMap[mesAnoStr]) {
@@ -174,32 +165,25 @@ export default async function handler(req, res) {
       resposta.periodos = Object.values(periodosCorrigidosMap);
 
       // =========================================================================
-      // 🔄 ESTRATÉGIA DE MESCLAGEM INTELIGENTE
+      // ESTRATÉGIA DE MESCLAGEM INTELIGENTE
       // =========================================================================
-      let periodosDoBanco = usuarioAtual?.periodos || [];
+let periodosDoBanco = usuarioAtual?.periodos || [];
       const chavesExistentes = new Set();
 
       periodosDoBanco.forEach((p) => {
-        // Fallback caso mesAno não exista (dados antigos)
         if (!p.mesAno && p.mes && p.ano) {
           p.mesAno = `${p.mes}/${p.ano}`;
         }
         
-        // 🐛 BUG 1 FIX: Normalizamos o período direto no array em memória para uso contínuo
         p.mesAno = normalizarMesAno(p.mesAno);
-        const periodoChave = p.mesAno;
-
         (p.transacoes || []).forEach((t) => {
           try {
             if (t.dadosCriptografados) {
               const objDescriptografado = JSON.parse(
                 descriptografar(t.dadosCriptografados),
               );
-              
-              // 🐛 BUG 2 FIX: Utilizando gerarChaveTransacao para padronizar
               chavesExistentes.add(
                 gerarChaveTransacao(
-                  periodoChave, 
                   objDescriptografado.data, 
                   objDescriptografado.descricao, 
                   objDescriptografado.valor
@@ -210,10 +194,9 @@ export default async function handler(req, res) {
               const descDesc = descriptografar(t.descricao) || "";
               const valorDesc =
                 t.valor !== undefined ? String(descriptografar(t.valor)) : "";
-              
-              // 🐛 BUG 2 FIX: Utilizando gerarChaveTransacao para padronizar  
+
               chavesExistentes.add(
-                gerarChaveTransacao(periodoChave, dataDesc, descDesc, valorDesc)
+                gerarChaveTransacao(dataDesc, descDesc, valorDesc)
               );
             }
           } catch (err) {
@@ -228,20 +211,15 @@ export default async function handler(req, res) {
       let houveNovasTransacoes = false;
 
       resposta.periodos.forEach((periodoNovo) => {
-        // Já foi normalizado no bloco REAGRUPAMENTO
         const stringMesAno = periodoNovo.mesAno;
 
-        // 🐛 BUG 1 FIX: Como as propriedades estão devidamente normalizadas em ambos lados, 
-        // a comparação simples resolverá 100% dos casos de duplicidade de mês.
         let periodoExistenteNoBanco = periodosDoBanco.find(
           (p) => p.mesAno === stringMesAno
         );
 
         const transacoesIneditas = (periodoNovo.transacoes || []).filter(
           (t) => {
-            // 🐛 BUG 2 FIX: Verificamos contra o Banco usando a mesma chave formatada 
-            // livre de case-sensitivity, acentos e espaços não determinísticos
-            const chaveNova = gerarChaveTransacao(stringMesAno, t.data, t.descricao, t.valor);
+            const chaveNova = gerarChaveTransacao(t.data, t.descricao, t.valor);
             return !chavesExistentes.has(chaveNova);
           },
         );
@@ -262,9 +240,7 @@ export default async function handler(req, res) {
                 parcelaTratada = { eParcela: false };
               }
             }
-            //----------------------------------------------------------------------
-            // GERAÇÃO DO UUID
-            //----------------------------------------------------------------------
+
             const transacaoUuid = crypto.randomUUID();
 
             const transacaoTratada = {
@@ -290,7 +266,6 @@ export default async function handler(req, res) {
             if (!periodoExistenteNoBanco.transacoes) {
               periodoExistenteNoBanco.transacoes = [];
             }
-            // Atualizamos a string normalizada apenas por segurança
             periodoExistenteNoBanco.mesAno = stringMesAno;
             periodoExistenteNoBanco.transacoes.push(
               ...transacoesCriptografadas,
@@ -349,7 +324,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- MÉTODO GET: Busca e Análise ---
   if (req.method === "GET") {
     const decodedUser = verifyToken(req);
     if (!decodedUser) {
@@ -385,8 +359,6 @@ export default async function handler(req, res) {
           try {
             if (t.dadosCriptografados) {
               const objDescriptografado = JSON.parse(descriptografar(t.dadosCriptografados));
-              
-              // 3️⃣ RETORNO DO GET: Garante que o UUID raiz seja passado de volta na listagem
               return { 
                 uuid: t.uuid || objDescriptografado.uuid, 
                 ...objDescriptografado 
