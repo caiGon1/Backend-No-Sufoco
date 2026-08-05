@@ -160,7 +160,6 @@ export async function analisarAcoes() {
   console.log("Iniciando rotina diária...");
 
   try {
-    // 🟢 MOVIDO PARA CÁ: A conexão agora acontece com segurança dentro do escopo assíncrono
     const client = await clientPromise;
     const db = client.db("NoSufocoDB");
     const usersCollection = db.collection("users");
